@@ -1,0 +1,20 @@
+name: TerrEconomy
+version: '${version}'
+main: ru.net.terracraft.eco.TerrEconomyPlugin
+api-version: '1.21'
+authors: [ luci ]
+description: Экономический плагин для сервера TerrCraft
+website: terracraft.net.ru
+
+dependencies:
+  server:
+    Vault:
+      load: BEFORE
+      required: true
+      join-classpath: true
+    CommandAPI:
+       load: BEFORE
+       required: true
+    MineSQL:
+       load: BEFORE
+       required: false

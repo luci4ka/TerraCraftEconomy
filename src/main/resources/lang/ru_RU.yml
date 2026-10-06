@@ -1,0 +1,60 @@
+prefix: "<dark_gray>[<gold>TerrEconomy<dark_gray>] <reset>"
+
+general:
+  only-players: "<red>Эта команда только для игроков."
+  no-permission: "<red>У вас нет прав."
+  player-not-found: "<red>Игрок <yellow>{target}</yellow> не найден."
+  player-never-joined: "<red>Игрок <yellow>{target}</yellow> никогда не заходил на сервер."
+  invalid-amount: "<red>Некорректная сумма."
+  self-action: "<red>Нельзя выполнить действие с самим собой."
+  reloaded: "<green>Конфигурация и языковые файлы перезагружены."
+  negative-amount: "<red>Сумма должна быть положительной."
+
+pay:
+  success-sender: "<green>Вы перевели <yellow>{amount}</yellow> игроку <yellow>{target}</yellow>."
+  success-target: "<green>Вы получили <yellow>{amount}</yellow> от <yellow>{sender}</yellow>."
+  tax-notice: "<gray>(налог: <red>{tax}</red>)"
+  offline-queued: "<yellow>Игрок офлайн. Платёж <yellow>{amount}</yellow> будет доставлен при входе."
+  offline-delivered: "<green>Вам доставлен платёж на <yellow>{amount}</yellow> от <yellow>{sender}</yellow>."
+  offline-summary: "<green>Вам доставлено <yellow>{count}</yellow> платежей на сумму <yellow>{total}</yellow>."
+  insufficient-funds: "<red>Недостаточно средств. Ваш баланс: <yellow>{balance}"
+
+notify:
+  pay:
+    sent-title: "<gold>💸 Перевод выполнен"
+    label-target: "<gray>  Кому: <yellow>{target}"
+    received-title: "<green>💰 Получен перевод"
+    received-subtitle: "<gray>+{amount} {symbol} от {sender}"
+    label-sender: "<gray>  От: <yellow>{sender}"
+    action-sent: "<red>💸 -{amount} {symbol}"
+    action-received: "<green>💰 +{amount} {symbol}"
+    action-queued: "<yellow>📬 Платёж отложен для {target}"
+    queued-title: "<yellow>  📬 Платёж отложен"
+    queued-line-target: "<gray>  Получатель: <yellow>{target}"
+    queued-line-amount: "<gray>  Сумма: <white>{amount} {symbol}"
+    queued-line-tax: "<gray>  Налог: <red>-{tax} {symbol}"
+    queued-line-deliver: "<gray>  Доставим при входе: <green>{amount} {symbol}"
+    delivered-title: "<gold>📬 Доставлены платежи"
+    delivered-subtitle: "<gray>+{amount} {symbol} от {sender}"
+    delivered-summary: "<gray>  Всего доставлено: <yellow>{count}</yellow> шт. на <green>{total} {symbol}"
+
+  receipt:
+    hover-name: "<gray>Нажми, чтобы посмотреть баланс"
+    hover-tax: "<gray>Ставка: <red>{percent}%"
+    line-amount: "<gray>  Сумма: <white>{amount} {symbol}"
+    line-tax: "<gray>  Налог: <red>-{tax} {symbol}"
+    line-total: "<gray>  Итог: <green>{amount} {symbol}"
+
+  balance:
+    self-title: "<gold>  💰 Ваш баланс"
+    self-hover: "<gray>Монеты можно перевести через /pay"
+    other-title: "<aqua>  👤 Баланс игрока"
+    other-hover: "<gray>Нажми, чтобы перевести деньги"
+    action: "<green>💰 {amount} {symbol}"
+
+eco:
+  give: "<green>Выдано <yellow>{amount}</yellow> игроку <yellow>{target}</yellow>. Новый баланс: <yellow>{balance}"
+  take: "<green>Списано <yellow>{amount}</yellow> у <yellow>{target}</yellow>. Новый баланс: <yellow>{balance}"
+  take-insufficient: "<red>У игрока недостаточно средств. Баланс: <yellow>{balance}"
+  set: "<green>Баланс <yellow>{target}</yellow> установлен в <yellow>{balance}"
+  reset: "<green>Баланс <yellow>{target}</yellow> сброшен."

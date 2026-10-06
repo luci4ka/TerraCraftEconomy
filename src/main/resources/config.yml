@@ -1,0 +1,34 @@
+lang:
+  locale: "ru_RU"
+
+database:
+  file: "economy"
+  pool-size: 5
+  connection-timeout: 10000
+
+economy:
+  starting-balance: 0.0
+  max-balance: 1000000000.0
+  currency-symbol: "$"
+  currency-name-singular: "монета"
+  currency-name-plural: "монет"
+  fractional-digits: 2
+  auto-save-interval: 60
+
+pay:
+  # Процент налога с каждого перевода (0 — отключено)
+  tax-percent: 2.0
+  # Минимальная сумма, с которой берётся налог
+  min-tax-amount: 1.0
+  # Максимальный налог с одной операции (0 — без ограничения)
+  max-tax-amount: 1000.0
+  # true — налог уходит в "казну сервера" (в никуда), false — сгорает
+  tax-to-server: true
+  # Разрешить переводы офлайн-игрокам
+  allow-offline: true
+
+updates:
+  # Проверять обновления через GitHub API
+  check: true
+  # URL к API релизов (пример для GitHub)
+  github-repo: "yourname/TerrEconomy"

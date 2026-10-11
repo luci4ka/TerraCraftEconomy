@@ -63,7 +63,7 @@ processResources {
 }
 
 shadowJar {
-    archiveClassifier.set('')
+    archiveClassifier.set(' ')
 
     relocate 'org.bstats',           'ru.net.terracraft.eco.libs.bstats'
     relocate 'com.zaxxer.hikari',    'ru.net.terracraft.eco.libs.hikari'

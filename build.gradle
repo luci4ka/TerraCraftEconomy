@@ -8,31 +8,26 @@ version = '1.0.1'
 
 repositories {
     mavenCentral()
-    maven { url 'https://repo.papermc.io/repository/maven-public/' }
-    maven { url 'https://jitpack.io/' }
-    maven { url 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
-    maven { url 'https://repo.codemc.org/repository/maven-public/' }
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+    maven { url = 'https://jitpack.io' }
+    maven { url = 'https://raw.githubusercontent.com/CarmJos/MineSQL/repo/' }
+    maven { url = 'https://repo.carm.cc/repository/maven-public/' }
+    maven { url = 'https://repo.codemc.org/repository/maven-public/' }
 }
 
 dependencies {
-    // Paper API 26.3 — только для компиляции
-    compileOnly("io.papermc.paper:paper-api:26.3.build.+")
 
-    // Vault (Foulest форк) — только для компиляции
-    compileOnly 'com.github.Foulest:Vault:2.5.0'
+    compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
 
-    // ConfigLib — внутрь JAR (используется в рантайме)
-    implementation 'de.exlll:configlib-yaml:4.8.1'
-
-    // CommandAPI — только для компиляции (плагин на сервере)
     compileOnly 'dev.jorel:commandapi-paper-core:12.1.0'
-
-    // PlaceholderAPI — только для компиляции (плагин на сервере)
     compileOnly 'me.clip:placeholderapi:2.12.3'
+    compileOnly 'com.github.Foulest:Vault:2.5.0'
+    compileOnly "cc.carm.plugin:minesql-api:1.4.2"
+    compileOnly 'cc.carm.lib:easysql-api:0.4.7'
 
-    // Update Notifier — внутрь JAR (используется в рантайме)
+    implementation 'de.exlll:configlib-yaml:4.8.1'
     implementation 'com.github.ez-plugins:mc-plugin-update-notifier:1.0.0'
-
     implementation 'org.bstats:bstats-bukkit:3.2.1'
 }
 
@@ -59,9 +54,9 @@ processResources {
 shadowJar {
     archiveClassifier.set(' ')
 
-    relocate 'org.bstats',           'ru.net.terracraft.eco.libs.bstats'
-    relocate 'de.exlll.configlib',   'ru.net.terracraft.eco.libs.configlib'
-    relocate 'com.github.ezplugins', 'ru.net.terracraft.eco.libs.updater'
+    relocate 'org.bstats',           'ru.terracraft.economy.libs.bstats'
+    relocate 'de.exlll.configlib',   'ru.terracraft.economy.libs.configlib'
+    relocate 'com.github.ezplugins', 'ru.terracraft.economy.libs.updater'
 
     exclude 'META-INF/maven/**'
     exclude 'META-INF/LICENSE*'

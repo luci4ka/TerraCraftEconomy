@@ -1,11 +1,11 @@
 # TerrEconomy
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/luci/TerrEconomy/releases)
-[![Paper](https://img.shields.io/badge/Paper-1.21.11-orange.svg)](https://papermc.io/)
-[![Java](https://img.shields.io/badge/Java-21-red.svg)](https://adoptium.net/)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/luci4ka/TerrCraftEconomy/releases)
+[![Paper](https://img.shields.io/badge/Paper-26.3-orange.svg)](https://papermc.io/)
+[![Java](https://img.shields.io/badge/Java-25-red.svg)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Экономический плагин для Paper-серверов с поддержкой Vault, офлайн-переводов, налогов и локализации.
+Экономический плагин для Paper-серверов с поддержкой Vault, офлайн-переводов, налогов, подтверждения крупных переводов, логирования транзакций и локализации.
 
 ---
 
@@ -15,25 +15,48 @@
 - 🔌 **Vault-совместимость** — работает со всеми плагинами через Vault
 - 📬 **Офлайн-переводы** — платёж доставляется при входе получателя
 - 💸 **Налог на перевод** — настраиваемый процент с каждой транзакции
+- ✅ **Подтверждение крупных переводов** — защита от опечаток через `/payconfirm`
+- 📜 **Логирование транзакций** — все операции пишутся в таблицу `transactions`
+- 🧹 **Очистка мёртвых аккаунтов** — `/eco cleanup <days>`
 - 🌍 **Мультиязычность** — у каждого игрока свой язык (клиентская локаль)
 - 🎨 **Красивые уведомления** — Title, Action Bar, hover/click-события
-- 💾 **H2 Database** — не требует внешней БД, всё локально
+- 💾 **MineSQL + MariaDB** — общий пул соединений для всех плагинов
 - ⚡ **Асинхронные операции** — БД не блокирует главный поток
 - 🔄 **ConfigLib** — автоматическое обновление конфига
+- 🧩 **PlaceholderAPI** — баланс, форматирование, сокращения (`1.5к`, `$1.5к`)
 - 📊 **bStats** — анонимная статистика
 
 ---
 
 ## 📦 Установка
 
-1. Скачай последний релиз из [Releases](https://github.com/luci/TerrEconomy/releases).
-2. Положи `Economy-1.0.0.jar` в папку `plugins/`.
+1. Скачай последний релиз из [Releases](https://github.com/luci4ka/TerrCraftEconomy/releases).
+2. Положи `TerrCraftEconomy-1.0.1.jar` в папку `plugins/`.
 3. Установи зависимости:
-    - [Vault](https://www.spigotmc.org/resources/vault.34315/) — **обязательно**
-    - [CommandAPI](https://commandapi.jorel.dev/) — **обязательно**
-    - [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) — опционально
+   - [Vault](https://www.spigotmc.org/resources/vault.34315/) — **обязательно**
+   - [CommandAPI](https://commandapi.jorel.dev/) — **обязательно**
+   - [MineSQL](https://github.com/CarmJos/MineSQL) — **обязательно** (для подключения к MariaDB)
+   - [PlaceholderAPI](https://www.spigotmc.org/resources/placeholderapi.6245/) — опционально
 4. Запусти сервер.
-5. Настрой `plugins/TerrEconomy/config.yml` под себя.
+5. Настрой источник данных в `plugins/MineSQL/config.yml` (см. ниже).
+6. Настрой `plugins/TerrCraftEconomy/config.yml` под себя.
+
+### Настройка MineSQL
+
+В `plugins/MineSQL/config.yml` создай источник данных с ID, который указан в `config.yml` плагина (`database.source-id`, по умолчанию `economy-db`):
+
+```yaml
+databases:
+  "economy-db":
+    driver-type: mariadb
+    host: 127.0.0.1
+    port: 3306
+    database: terracraft_eco
+    username: your_user
+    password: your_password
+```
+
+> Для MariaDB рекомендуется указывать `driver-type: mariadb`, а не `mysql`.
 
 ---
 
@@ -44,12 +67,13 @@
 | `/balance [игрок]` | Показать свой или чужой баланс | — |
 | `/bal`, `/money` | Алиасы `/balance` | — |
 | `/pay <игрок> <сумма>` | Перевести деньги игроку | — |
-| `/terrEco give <игрок> <сумма>` | Выдать деньги | `terracraft.eco.admin` |
-| `/terrEco take <игрок> <сумма>` | Забрать деньги | `terracraft.eco.admin` |
-| `/terrEco set <игрок> <сумма>` | Установить баланс | `terracraft.eco.admin` |
-| `/terrEco reset <игрок>` | Сбросить баланс | `terracraft.eco.admin` |
-| `/terrEco reload` | Перезагрузить конфиг и языки | `terracraft.eco.admin` |
-| `/teco` | Алиас `/terrEco` | `terracraft.eco.admin` |
+| `/payconfirm` | Подтвердить крупный перевод | — |
+| `/eco give <игрок> <сумма>` | Выдать деньги | `terracraft.economy.admin` |
+| `/eco take <игрок> <сумма>` | Забрать деньги | `terracraft.economy.admin` |
+| `/eco set <игрок> <сумма>` | Установить баланс | `terracraft.economy.admin` |
+| `/eco reset <игрок>` | Сбросить баланс | `terracraft.economy.admin` |
+| `/eco cleanup <days>` | Удалить неактивные аккаунты с нулевым балансом | `terracraft.economy.admin` |
+| `/eco reload` | Перезагрузить конфиг и языки | `terracraft.economy.admin` |
 
 ---
 
@@ -57,7 +81,7 @@
 
 | Право | Описание | По умолчанию |
 |---|---|---|
-| `terracraft.eco.admin` | Доступ к `/terrEco` | OP |
+| `terracraft.economy.admin` | Доступ к `/eco ...` | OP |
 
 ---
 
@@ -71,12 +95,8 @@ lang:
   locale: ru_RU
 
 database:
-  # Имя файла H2 (без расширения)
-  file: economy
-  # Размер пула соединений
-  pool-size: 5
-  # Таймаут подключения (мс)
-  connection-timeout: 10000
+  # ID источника данных в plugins/MineSQL/config.yml
+  source-id: economy-db
 
 economy:
   # Стартовый баланс новых игроков
@@ -103,6 +123,10 @@ pay:
   max-tax-amount: 1000.0
   # Разрешить переводы офлайн-игрокам
   allow-offline: true
+  # Порог суммы, выше которого требуется подтверждение (0 — отключено)
+  confirm-threshold: 1000.0
+  # Время на подтверждение (секунды)
+  confirm-timeout: 15
 
 updates:
   # Проверять обновления при старте сервера
@@ -123,10 +147,10 @@ updates:
 
 ### Добавление своего языка
 
-1. Скопируй `plugins/TerrEconomy/lang/en_US.yml`.
+1. Скопируй `plugins/TerrCraftEconomy/lang/en_US.yml`.
 2. Переименуй в код своей локали, например `de_DE.yml`.
-3. Переведи все сообщения.
-4. Перезапусти сервер или выполни `/terrEco reload`.
+3. Переведи все сообщения (включая `abbrev.k/m/b` — суффиксы сокращений).
+4. Перезапусти сервер или выполни `/eco reload`.
 
 ---
 
@@ -142,20 +166,17 @@ economy.depositPlayer(player, 100.0);
 
 ### PlaceholderAPI
 
-Для использования плейсхолдеров установи expansion `Vault`:
+Плагин регистрирует собственное расширение `terr_economy`. Доступные плейсхолдеры:
 
-```
-/papi ecloud download Vault
-/papi reload
-```
+| Плейсхолдер | Описание | Пример |
+|---|---|---|
+| `%terr_economy_balance%` | Баланс без округления | `1234.5678` |
+| `%terr_economy_balance_format%` | Баланс с округлением | `1234.57` |
+| `%terr_economy_balance_format_symvol%` | Баланс с символом валюты | `$1234.57` |
+| `%terr_economy_balance_short%` | Сокращённый баланс | `1.2к` |
+| `%terr_economy_balance_short_symvol%` | Сокращённый баланс с символом | `$1.2к` |
 
-Доступные плейсхолдеры:
-
-| Плейсхолдер | Описание |
-|---|---|
-| `%vault_eco_balance%` | Баланс игрока (число) |
-| `%vault_eco_balance_formatted%` | Баланс с символом валюты |
-| `%vault_eco_balance_commas%` | Баланс с разделителями тысяч |
+Суффиксы сокращений (`к`, `М`, `млрд` / `k`, `M`, `B`) настраиваются в языковых файлах через ключи `abbrev.k`, `abbrev.m`, `abbrev.b`.
 
 ---
 
@@ -163,35 +184,35 @@ economy.depositPlayer(player, 100.0);
 
 ### Требования
 
-- **JDK 21** или выше ([Adoptium](https://adoptium.net/))
+- **JDK 25** ([Adoptium](https://adoptium.net/))
 - **Gradle 8.x** (или используй wrapper)
 
 ### Команды
 
 ```bash
-git clone https://github.com/luci/TerrEconomy.git
-cd TerrEconomy
+git clone https://github.com/luci4ka/TerrCraftEconomy.git
+cd TerrCraftEconomy
 ./gradlew clean shadowJar
 ```
 
-Готовый JAR появится в `build/libs/Economy-1.0.0.jar`.
+Готовый JAR появится в `build/libs/TerrCraftEconomy-1.0.1.jar`.
 
 ### Структура проекта
 
 ```
-src/main/java/ru/net/terracraft/eco/
+src/main/java/ru/terracraft/economy/
 ├── TerrEconomyPlugin.java       # главный класс
 ├── command/                     # команды на CommandAPI
 ├── config/                      # PluginConfig + ConfigLoader
 ├── db/                          # DatabaseProvider + PlayerRepository
 ├── economy/                     # EconomyService, EconomyCache, Vault-провайдер
+├── hook/                        # TerrEconomyExpansion (PlaceholderAPI)
 ├── lang/                        # LangManager + LangKey (enum)
 ├── listener/                    # PlayerConnectionListener
-└── util/                        # NotificationManager, UpdateNotifier
+└── util/                        # NotificationManager, UpdateNotifier, PendingPayManager
 
 src/main/resources/
 ├── paper-plugin.yml
-├── config.yml
 └── lang/
     ├── ru_RU.yml
     └── en_US.yml
@@ -208,9 +229,13 @@ src/main/resources/
 - [x] Локализация по клиенту
 - [x] Красивые уведомления
 - [x] ConfigLib + автообновление конфига
-- [ ] `/baltop` — топ богатейших
-- [ ] `/money history` — история транзакций
-- [ ] Миграция на MineSQL (общий пул для всех плагинов)
+- [x] Подтверждение крупных переводов
+- [x] Логирование транзакций в БД
+- [x] Очистка мёртвых аккаунтов
+- [x] PlaceholderAPI-расширение (включая сокращения)
+- [x] Миграция на MineSQL + MariaDB
+- [ ] `/eco history <player>` — просмотр истории транзакций в чате
+- [ ] Отдельный тип транзакции `OFFLINE_PAY` для офлайн-переводов
 
 ---
 
@@ -222,5 +247,5 @@ MIT License — используй свободно, изменяй, распр�
 
 ## 💬 Поддержка
 
-- **Issues**: [github.com/luci4ka/TerrCraftEconomy/issues](https://github.com/luci/TerrEconomy/issues)
-- **Сайт**: [terracraft.net.ru](https://terracraft.net.ru)
+- **Issues**: [github.com/luci4ka/TerrCraftEconomy/issues](https://github.com/luci4ka/TerrCraftEconomy/issues)
+

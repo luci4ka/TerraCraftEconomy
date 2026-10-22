@@ -1,4 +1,4 @@
-package ru.net.terracraft.eco.config;
+package ru.terracraft.economy.config;
 
 import de.exlll.configlib.Comment;
 import de.exlll.configlib.Configuration;
@@ -11,7 +11,7 @@ public final class PluginConfig {
     @Comment("Язык сообщений: ru_RU, en_US")
     public LangSection lang = new LangSection();
 
-    @Comment("Настройки базы данных H2")
+    @Comment("Настройки подключения к базе данных через MineSQL")
     public DatabaseSection database = new DatabaseSection();
 
     @Comment("Основные настройки экономики")
@@ -23,8 +23,6 @@ public final class PluginConfig {
     @Comment("Проверка обновлений плагина")
     public UpdatesSection updates = new UpdatesSection();
 
-    // ============ Вложенные секции ============
-
     @Configuration
     public static final class LangSection {
         @Comment("Локаль: ru_RU или en_US")
@@ -33,14 +31,11 @@ public final class PluginConfig {
 
     @Configuration
     public static final class DatabaseSection {
-        @Comment("Имя файла БД (без расширения)")
-        public String file = "economy";
-
-        @Comment("Размер пула соединений HikariCP")
-        public int poolSize = 5;
-
-        @Comment("Таймаут подключения (мс)")
-        public long connectionTimeout = 10000;
+        @Comment("""
+                ID источника данных в plugins/MineSQL/config.yml.
+                Должен совпадать с ключом в секции databases (например, "economy-db").
+                """)
+        public String sourceId = "economy-db";
     }
 
     @Configuration
@@ -83,6 +78,12 @@ public final class PluginConfig {
 
         @Comment("Разрешить переводы офлайн-игрокам")
         public boolean allowOffline = true;
+
+        @Comment("Порог суммы, выше которого требуется подтверждение (0 — отключено)")
+        public BigDecimal confirmThreshold = BigDecimal.valueOf(1000);
+
+        @Comment("Время на подтверждение (секунды)")
+        public int confirmTimeout = 15;
     }
 
     @Configuration

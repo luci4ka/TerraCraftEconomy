@@ -1,21 +1,23 @@
-package ru.net.terracraft.eco;
+package ru.terracraft.economy;
 
 import net.milkbowl.vault.economy.Economy;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
-import ru.net.terracraft.eco.command.CommandRegistrar;
-import ru.net.terracraft.eco.config.ConfigLoader;
-import ru.net.terracraft.eco.config.PluginConfig;
-import ru.net.terracraft.eco.db.DatabaseProvider;
-import ru.net.terracraft.eco.db.PlayerRepository;
-import ru.net.terracraft.eco.economy.EconomyCache;
-import ru.net.terracraft.eco.economy.EconomyService;
-import ru.net.terracraft.eco.economy.TerrEconomyProvider;
-import ru.net.terracraft.eco.lang.LangManager;
-import ru.net.terracraft.eco.listener.PlayerConnectionListener;
-import ru.net.terracraft.eco.util.NotificationManager;
-import ru.net.terracraft.eco.util.UpdateNotifier;
+import ru.terracraft.economy.command.CommandRegistrar;
+import ru.terracraft.economy.config.ConfigLoader;
+import ru.terracraft.economy.config.PluginConfig;
+import ru.terracraft.economy.db.DatabaseProvider;
+import ru.terracraft.economy.db.PlayerRepository;
+import ru.terracraft.economy.economy.EconomyCache;
+import ru.terracraft.economy.economy.EconomyService;
+import ru.terracraft.economy.economy.TerrEconomyProvider;
+import ru.terracraft.economy.hook.TerrEconomyExpansion;
+import ru.terracraft.economy.lang.LangManager;
+import ru.terracraft.economy.listener.PlayerConnectionListener;
+import ru.terracraft.economy.util.NotificationManager;
+import ru.terracraft.economy.util.PendingPayManager;
+import ru.terracraft.economy.util.UpdateNotifier;
 
 public final class TerrEconomyPlugin extends JavaPlugin {
 
@@ -30,18 +32,16 @@ public final class TerrEconomyPlugin extends JavaPlugin {
     private TerrEconomyProvider economyProvider;
     private LangManager langManager;
     private NotificationManager notifier;
+    private PendingPayManager pendingPayManager;
 
     @Override
     public void onEnable() {
-        // 1. Конфиг через ConfigLib
         this.configLoader = new ConfigLoader(this);
         this.configLoader.load();
         this.pluginConfig = configLoader.get();
 
-        // 2. Языки
         this.langManager = new LangManager(this, pluginConfig);
 
-        // 3. БД
         this.databaseProvider = new DatabaseProvider(this, pluginConfig);
         if (!databaseProvider.initialize()) {
             getLogger().severe("Не удалось инициализировать БД. Отключаю плагин.");
@@ -50,30 +50,33 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         }
         this.playerRepository = new PlayerRepository(this, databaseProvider);
 
-        // 4. Кэш, сервис, уведомления
         this.cache = new EconomyCache(pluginConfig);
         this.economyService = new EconomyService(cache, playerRepository, pluginConfig);
+        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            new TerrEconomyExpansion(this, economyService, pluginConfig, langManager).register();
+        }
         this.notifier = new NotificationManager(pluginConfig, langManager);
+        this.pendingPayManager = new PendingPayManager(pluginConfig);
 
-        // 5. Vault
         this.economyProvider = new TerrEconomyProvider(this, economyService, pluginConfig);
         getServer().getServicesManager().register(
                 Economy.class, economyProvider, this, ServicePriority.Normal);
 
-        // 6. Слушатели
         getServer().getPluginManager().registerEvents(
-                new PlayerConnectionListener(cache, playerRepository, pluginConfig, economyService, notifier),
+                new PlayerConnectionListener(this, cache, playerRepository, pluginConfig, economyService, notifier),
                 this);
 
-        // 7. Команды
         new CommandRegistrar(this, economyService, langManager, notifier).register();
 
-        // 8. Автосохранение
+        // Автосохранение
         long interval = pluginConfig.economy.autoSaveInterval * 20L;
         getServer().getScheduler().runTaskTimerAsynchronously(this,
                 () -> cache.flushAll(playerRepository), interval, interval);
 
-        // 9. bStats
+        // Очистка просроченных подтверждений (раз в минуту)
+        getServer().getScheduler().runTaskTimerAsynchronously(this,
+                pendingPayManager::cleanup, 1200L, 1200L);
+
         new Metrics(this, 12345);
 
         this.updateNotifier = new UpdateNotifier(this, pluginConfig);
@@ -93,14 +96,11 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         getLogger().info("TerrEconomy выключен.");
     }
 
-    /** Вызывается из /terrEco reload. */
     public void reloadPlugin() {
         configLoader.load();
         this.pluginConfig = configLoader.get();
-
         langManager.reload();
         this.notifier = new NotificationManager(pluginConfig, langManager);
-
         getLogger().info("Конфигурация перезагружена.");
     }
 
@@ -111,4 +111,5 @@ public final class TerrEconomyPlugin extends JavaPlugin {
     public EconomyCache getCache() { return cache; }
     public PlayerRepository getPlayerRepository() { return playerRepository; }
     public NotificationManager getNotifier() { return notifier; }
+    public PendingPayManager getPendingPayManager() { return pendingPayManager; }
 }

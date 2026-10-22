@@ -1,9 +1,9 @@
-package ru.net.terracraft.eco.command;
+package ru.terracraft.economy.command;
 
-import ru.net.terracraft.eco.TerrEconomyPlugin;
-import ru.net.terracraft.eco.economy.EconomyService;
-import ru.net.terracraft.eco.lang.LangManager;
-import ru.net.terracraft.eco.util.NotificationManager;
+import ru.terracraft.economy.TerrEconomyPlugin;
+import ru.terracraft.economy.economy.EconomyService;
+import ru.terracraft.economy.lang.LangManager;
+import ru.terracraft.economy.util.NotificationManager;
 
 public class CommandRegistrar {
 
@@ -22,7 +22,7 @@ public class CommandRegistrar {
 
     public void register() {
         new BalanceCommandNode(economyService, langManager, notifier).register();
-        new PayCommandNode(economyService, langManager, plugin.getPluginConfig(), notifier).register();
+        new PayCommandNode(plugin, economyService, langManager, plugin.getPluginConfig(), notifier).register();
         new TerrEcoAdminCommandNode(plugin, economyService, langManager).register();
     }
 }

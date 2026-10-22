@@ -1,7 +1,7 @@
-package ru.net.terracraft.eco.economy;
+package ru.terracraft.economy.economy;
 
-import ru.net.terracraft.eco.config.PluginConfig;
-import ru.net.terracraft.eco.db.PlayerRepository;
+import ru.terracraft.economy.config.PluginConfig;
+import ru.terracraft.economy.db.PlayerRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -35,15 +35,15 @@ public class EconomyCache {
     }
 
     public synchronized BigDecimal withdraw(UUID uuid, BigDecimal amount) {
-        BigDecimal current = balances.getOrDefault(uuid, BigDecimal.ZERO);
-        BigDecimal newBalance = scale(current.subtract(amount));
+        var current = balances.getOrDefault(uuid, BigDecimal.ZERO);
+        var newBalance = scale(current.subtract(amount));
         balances.put(uuid, newBalance);
         return newBalance;
     }
 
     public synchronized BigDecimal deposit(UUID uuid, BigDecimal amount) {
-        BigDecimal current = balances.getOrDefault(uuid, BigDecimal.ZERO);
-        BigDecimal newBalance = scale(current.add(amount));
+        var current = balances.getOrDefault(uuid, BigDecimal.ZERO);
+        var newBalance = scale(current.add(amount));
         if (newBalance.compareTo(config.economy.maxBalance) > 0) {
             newBalance = scale(config.economy.maxBalance);
         }

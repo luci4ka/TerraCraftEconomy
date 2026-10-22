@@ -1,0 +1,89 @@
+package ru.terracraft.economy.hook;
+
+import me.clip.placeholderapi.expansion.PlaceholderExpansion;
+import org.bukkit.OfflinePlayer;
+import org.jetbrains.annotations.NotNull;
+import ru.terracraft.economy.TerrEconomyPlugin;
+import ru.terracraft.economy.config.PluginConfig;
+import ru.terracraft.economy.economy.EconomyService;
+import ru.terracraft.economy.lang.LangKey;
+import ru.terracraft.economy.lang.LangManager;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+public class TerrEconomyExpansion extends PlaceholderExpansion {
+
+    private final TerrEconomyPlugin plugin;
+    private final EconomyService economyService;
+    private final PluginConfig config;
+    private final LangManager lang;
+
+    public TerrEconomyExpansion(TerrEconomyPlugin plugin, EconomyService economyService,
+                                PluginConfig config, LangManager lang) {
+        this.plugin = plugin;
+        this.economyService = economyService;
+        this.config = config;
+        this.lang = lang;
+    }
+
+    @Override public @NotNull String getIdentifier() { return "terr_economy"; }
+    @Override public @NotNull String getAuthor() { return String.join(", ", plugin.getPluginMeta().getAuthors()); }
+    @Override public @NotNull String getVersion() { return plugin.getPluginMeta().getVersion(); }
+    @Override public boolean persist() { return true; }
+
+    @Override
+    public String onRequest(OfflinePlayer player, @NotNull String params) {
+        if (player == null) return null;
+
+        BigDecimal balance = economyService.getBalance(player.getUniqueId());
+        if (balance == null) balance = BigDecimal.ZERO;
+
+        return switch (params.toLowerCase()) {
+            case "balance" -> balance.toPlainString();
+
+            case "balance_format" -> balance
+                    .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP)
+                    .toPlainString();
+
+            case "balance_format_symvol" -> config.economy.currencySymbol + balance
+                    .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP)
+                    .toPlainString();
+
+            case "balance_short" -> abbreviate(balance);
+
+            case "balance_short_symvol" -> config.economy.currencySymbol + abbreviate(balance);
+
+            default -> null;
+        };
+    }
+
+    /**
+     * Сокращает число: 1000 → 1к, 1500 → 1.5к, 1000000 → 1М.
+     * Суффиксы берутся из языковых файлов (LangKey.ABBREV_K/M/B).
+     */
+    private String abbreviate(BigDecimal value) {
+        if (value == null) return "0";
+
+        BigDecimal abs = value.abs();
+        String suffix;
+        BigDecimal divisor;
+
+        if (abs.compareTo(BigDecimal.valueOf(1_000_000_000)) >= 0) {
+            divisor = BigDecimal.valueOf(1_000_000_000);
+            suffix = lang.abbrevSuffix(LangKey.ABBREV_B);
+        } else if (abs.compareTo(BigDecimal.valueOf(1_000_000)) >= 0) {
+            divisor = BigDecimal.valueOf(1_000_000);
+            suffix = lang.abbrevSuffix(LangKey.ABBREV_M);
+        } else if (abs.compareTo(BigDecimal.valueOf(1_000)) >= 0) {
+            divisor = BigDecimal.valueOf(1_000);
+            suffix = lang.abbrevSuffix(LangKey.ABBREV_K);
+        } else {
+            return value.setScale(0, RoundingMode.HALF_UP).toPlainString();
+        }
+
+        BigDecimal result = value.divide(divisor, 1, RoundingMode.HALF_UP);
+        String formatted = result.stripTrailingZeros().toPlainString();
+        return formatted + suffix;
+    }
+}

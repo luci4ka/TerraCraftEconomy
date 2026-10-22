@@ -1,10 +1,11 @@
-name: TerrEconomy
+name: TerrCraftEconomy
 version: '${version}'
-main: ru.net.terracraft.eco.TerrEconomyPlugin
-api-version: '1.21'
+main: ru.terracraft.economy.TerrEconomyPlugin
+api-version: '26.3'
+java-version: '25'
 authors: [ luci ]
 description: Экономический плагин для сервера TerrCraft
-website: terracraft.net.ru
+website: terra-craft.ru
 
 dependencies:
   server:
@@ -17,4 +18,12 @@ dependencies:
        required: true
     MineSQL:
        load: BEFORE
-       required: false
+       required: true
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+
+permissions:
+  terracraft.economy.admin:
+    description: "Доступ к админ-командам экономики (/eco)"
+    default: op

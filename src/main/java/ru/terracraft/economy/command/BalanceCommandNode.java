@@ -1,4 +1,4 @@
-package ru.net.terracraft.eco.command;
+package ru.terracraft.economy.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.ArgumentSuggestions;
@@ -7,10 +7,10 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import ru.net.terracraft.eco.economy.EconomyService;
-import ru.net.terracraft.eco.lang.LangKey;
-import ru.net.terracraft.eco.lang.LangManager;
-import ru.net.terracraft.eco.util.NotificationManager;
+import ru.terracraft.economy.economy.EconomyService;
+import ru.terracraft.economy.lang.LangKey;
+import ru.terracraft.economy.lang.LangManager;
+import ru.terracraft.economy.util.NotificationManager;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -30,6 +30,7 @@ public class BalanceCommandNode {
     public void register() {
         new CommandAPICommand("balance")
                 .withAliases("bal", "money")
+                // Право не указано — команда доступна всем (CommandPermission.NONE)
                 .withOptionalArguments(new StringArgument("target")
                         .replaceSuggestions(ArgumentSuggestions.strings(info ->
                                 Bukkit.getOnlinePlayers().stream()
@@ -39,11 +40,9 @@ public class BalanceCommandNode {
                     String targetName = (String) args.getOptional("target").orElse(null);
 
                     if (targetName == null) {
-                        // /balance — свой баланс
                         BigDecimal balance = economyService.getBalance(player.getUniqueId());
                         notifier.showSelfBalance(player, balance);
                     } else {
-                        // /balance <игрок> — чужой баланс
                         showOtherBalance(player, targetName);
                     }
                 })
@@ -52,7 +51,7 @@ public class BalanceCommandNode {
 
     private void showOtherBalance(CommandSender sender, String targetName) {
         OfflinePlayer target = Bukkit.getOfflinePlayerIfCached(targetName);
-        if (target == null || !economyService.hasAccount(target.getUniqueId())) {
+        if (target == null) {
             send(sender, LangKey.GENERAL_PLAYER_NOT_FOUND, Map.of("target", targetName));
             return;
         }

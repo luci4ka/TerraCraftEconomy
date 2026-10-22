@@ -1,7 +1,7 @@
-package ru.net.terracraft.eco.economy;
+package ru.terracraft.economy.economy;
 
-import ru.net.terracraft.eco.config.PluginConfig;
-import ru.net.terracraft.eco.db.PlayerRepository;
+import ru.terracraft.economy.config.PluginConfig;
+import ru.terracraft.economy.db.PlayerRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -38,34 +38,37 @@ public class EconomyService {
 
     /** Начисление. Возвращает новый баланс. */
     public BigDecimal deposit(UUID uuid, BigDecimal amount) {
-        BigDecimal scaled = scale(amount);
-        BigDecimal newBalance = cache.deposit(uuid, scaled);
+        var scaled = scale(amount);
+        var newBalance = cache.deposit(uuid, scaled);
         repo.updateBalanceAsync(uuid, newBalance);
+        repo.logTransactionAsync(null, uuid, scaled, "DEPOSIT");
         return newBalance;
     }
 
     /** Списание. Возвращает null, если недостаточно средств. */
     public BigDecimal withdraw(UUID uuid, BigDecimal amount) {
-        BigDecimal scaled = scale(amount);
+        var scaled = scale(amount);
         if (cache.getBalance(uuid).compareTo(scaled) < 0) {
             return null;
         }
-        BigDecimal newBalance = cache.withdraw(uuid, scaled);
+        var newBalance = cache.withdraw(uuid, scaled);
         repo.updateBalanceAsync(uuid, newBalance);
+        repo.logTransactionAsync(uuid, null, scaled, "WITHDRAW");
         return newBalance;
     }
 
     /** Установка баланса напрямую (админ). */
     public BigDecimal set(UUID uuid, BigDecimal amount) {
-        BigDecimal scaled = scale(amount);
+        var scaled = scale(amount);
         cache.load(uuid, scaled);
         repo.updateBalanceAsync(uuid, scaled);
+        repo.logTransactionAsync(null, uuid, scaled, "SET");
         return scaled;
     }
 
     /** Перевод между игроками без налога. */
     public boolean transfer(UUID from, UUID to, BigDecimal amount) {
-        BigDecimal scaled = scale(amount);
+        var scaled = scale(amount);
 
         if (cache.getBalance(from).compareTo(scaled) < 0) {
             return false;
@@ -81,14 +84,15 @@ public class EconomyService {
 
         repo.updateBalanceAsync(from, newFrom);
         repo.updateBalanceAsync(to, newTo);
+        repo.logTransactionAsync(from, to, scaled, "TRANSFER");
 
         return true;
     }
 
     /** Перевод с налогом: отправитель теряет amount, получатель получает (amount − tax). */
     public boolean transferWithTax(UUID from, UUID to, BigDecimal amount, BigDecimal tax) {
-        BigDecimal scaled = scale(amount);
-        BigDecimal net = scale(amount.subtract(tax));
+        var scaled = scale(amount);
+        var net = scale(amount.subtract(tax));
 
         BigDecimal newFrom;
         BigDecimal newTo;
@@ -103,6 +107,7 @@ public class EconomyService {
 
         repo.updateBalanceAsync(from, newFrom);
         repo.updateBalanceAsync(to, newTo);
+        repo.logTransactionAsync(from, to, scaled, "PAY");
 
         return true;
     }
@@ -117,5 +122,9 @@ public class EconomyService {
 
     public void queueOfflinePayment(UUID recipient, UUID sender, BigDecimal amount) {
         repo.insertPendingPayment(recipient, sender, amount);
+        // Офлайн-платёж ещё не доставлен, но факт списания у отправителя
+        // уже зафиксирован в withdraw() выше. Отдельную запись не создаём,
+        // чтобы не дублировать: когда платёж доставится, сработает deposit()
+        // с типом DEPOSIT.
     }
 }

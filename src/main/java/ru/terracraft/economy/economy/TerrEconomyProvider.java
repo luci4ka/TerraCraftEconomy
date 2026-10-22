@@ -1,11 +1,11 @@
-package ru.net.terracraft.eco.economy;
+package ru.terracraft.economy.economy;
 
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.Plugin;
-import ru.net.terracraft.eco.config.PluginConfig;
+import ru.terracraft.economy.config.PluginConfig;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -67,7 +67,7 @@ public class TerrEconomyProvider implements Economy {
     @Override
     public boolean createPlayerAccount(UUID uuid) {
         if (uuid == null || service.hasAccount(uuid)) return false;
-        OfflinePlayer p = Bukkit.getOfflinePlayer(uuid);
+        var p = Bukkit.getOfflinePlayer(uuid);
         service.createAccount(uuid, p.getName());
         return true;
     }
@@ -102,7 +102,7 @@ public class TerrEconomyProvider implements Economy {
         if (uuid == null) return fail("Игрок не найден");
         if (amount < 0) return fail("Сумма не может быть отрицательной");
 
-        BigDecimal newBalance = service.withdraw(uuid, BigDecimal.valueOf(amount));
+        var newBalance = service.withdraw(uuid, BigDecimal.valueOf(amount));
         if (newBalance == null) {
             return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
                     EconomyResponse.ResponseType.FAILURE, "Недостаточно средств");
@@ -121,7 +121,7 @@ public class TerrEconomyProvider implements Economy {
         if (uuid == null) return fail("Игрок не найден");
         if (amount < 0) return fail("Сумма не может быть отрицательной");
 
-        BigDecimal newBalance = service.deposit(uuid, BigDecimal.valueOf(amount));
+        var newBalance = service.deposit(uuid, BigDecimal.valueOf(amount));
         return new EconomyResponse(amount, newBalance.doubleValue(),
                 EconomyResponse.ResponseType.SUCCESS, null);
     }
@@ -199,7 +199,7 @@ public class TerrEconomyProvider implements Economy {
     // ============ String-методы ============
     @Override
     public boolean hasAccount(String playerName) {
-        OfflinePlayer p = Bukkit.getOfflinePlayerIfCached(playerName);
+        var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p != null && hasAccount(p);
     }
 
@@ -210,7 +210,7 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public boolean createPlayerAccount(String playerName) {
-        OfflinePlayer p = Bukkit.getOfflinePlayerIfCached(playerName);
+        var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p != null && createPlayerAccount(p);
     }
 
@@ -221,7 +221,7 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public double getBalance(String playerName) {
-        OfflinePlayer p = Bukkit.getOfflinePlayerIfCached(playerName);
+        var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p == null ? 0.0 : getBalance(p);
     }
 
@@ -242,7 +242,7 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public EconomyResponse withdrawPlayer(String playerName, double amount) {
-        OfflinePlayer p = Bukkit.getOfflinePlayerIfCached(playerName);
+        var p = Bukkit.getOfflinePlayerIfCached(playerName);
         if (p == null) return fail("Игрок не найден");
         return withdrawPlayer(p, amount);
     }
@@ -254,7 +254,7 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public EconomyResponse depositPlayer(String playerName, double amount) {
-        OfflinePlayer p = Bukkit.getOfflinePlayerIfCached(playerName);
+        var p = Bukkit.getOfflinePlayerIfCached(playerName);
         if (p == null) return fail("Игрок не найден");
         return depositPlayer(p, amount);
     }

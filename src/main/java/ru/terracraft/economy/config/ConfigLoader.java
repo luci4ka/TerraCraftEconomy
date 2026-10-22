@@ -1,4 +1,4 @@
-package ru.net.terracraft.eco.config;
+package ru.terracraft.economy.config;
 
 import de.exlll.configlib.YamlConfigurationProperties;
 import de.exlll.configlib.YamlConfigurationStore;
@@ -19,7 +19,13 @@ public class ConfigLoader {
         this.configPath = new File(plugin.getDataFolder(), "config.yml").toPath();
 
         YamlConfigurationProperties props = YamlConfigurationProperties.newBuilder()
-                .header("TerrEconomy — конфигурация\nДокументация: terracraft.net.ru")
+                .header("""
+                        TerrEconomy — конфигурация
+                        Документация: terracraft.net.ru
+                        
+                        Подключение к БД настраивается в plugins/MineSQL/config.yml.
+                        В этом файле укажите только ID источника данных (database.sourceId).
+                        """)
                 .build();
 
         this.store = new YamlConfigurationStore<>(PluginConfig.class, props);

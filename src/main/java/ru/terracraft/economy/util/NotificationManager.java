@@ -1,4 +1,4 @@
-package ru.net.terracraft.eco.util;
+package ru.terracraft.economy.util;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -7,9 +7,9 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import org.bukkit.entity.Player;
-import ru.net.terracraft.eco.config.PluginConfig;
-import ru.net.terracraft.eco.lang.LangKey;
-import ru.net.terracraft.eco.lang.LangManager;
+import ru.terracraft.economy.config.PluginConfig;
+import ru.terracraft.economy.lang.LangKey;
+import ru.terracraft.economy.lang.LangManager;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -17,12 +17,25 @@ import java.util.Map;
 
 public class NotificationManager {
 
+    /** Длина разделительной линии в чате (символов). */
+    private static final int LINE_LENGTH = 40;
+
+    /** Время показа Title (fadeIn, stay, fadeOut). */
+    private static final Title.Times TITLE_TIMES = Title.Times.times(
+            Duration.ofMillis(200),
+            Duration.ofSeconds(2),
+            Duration.ofMillis(500));
+
     private final PluginConfig config;
     private final LangManager lang;
 
     public NotificationManager(PluginConfig config, LangManager lang) {
         this.config = config;
         this.lang = lang;
+    }
+
+    private Component line(NamedTextColor color) {
+        return Component.text("━".repeat(LINE_LENGTH)).color(color);
     }
 
     // ============ Перевод выполнен (отправитель) ============
@@ -58,10 +71,7 @@ public class NotificationManager {
                                 "sender", senderName,
                                 "symbol", config.economy.currencySymbol))
                         .color(NamedTextColor.GRAY),
-                Title.Times.times(
-                        Duration.ofMillis(200),
-                        Duration.ofSeconds(2),
-                        Duration.ofMillis(500))
+                TITLE_TIMES
         ));
 
         target.sendActionBar(lang.msgNoPrefix(target, LangKey.NOTIFY_PAY_ACTION_RECEIVED, Map.of(
@@ -84,10 +94,8 @@ public class NotificationManager {
 
     public void paymentQueued(Player sender, String targetName,
                               BigDecimal amount, BigDecimal tax, BigDecimal netAmount) {
-        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
         Component result = Component.empty()
-                .append(Component.text(line).color(NamedTextColor.YELLOW))
+                .append(line(NamedTextColor.YELLOW))
                 .append(Component.newline())
                 .append(lang.msgNoPrefix(sender, LangKey.NOTIFY_PAY_QUEUED_TITLE)
                         .color(NamedTextColor.YELLOW)
@@ -116,7 +124,7 @@ public class NotificationManager {
                                 "symbol", config.economy.currencySymbol))
                         .color(NamedTextColor.GREEN))
                 .append(Component.newline())
-                .append(Component.text(line).color(NamedTextColor.YELLOW));
+                .append(line(NamedTextColor.YELLOW));
 
         sender.sendMessage(result);
         sender.sendActionBar(lang.msgNoPrefix(sender, LangKey.NOTIFY_PAY_ACTION_QUEUED,
@@ -136,10 +144,7 @@ public class NotificationManager {
                                 "sender", senderName,
                                 "symbol", config.economy.currencySymbol))
                         .color(NamedTextColor.GRAY),
-                Title.Times.times(
-                        Duration.ofMillis(200),
-                        Duration.ofSeconds(2),
-                        Duration.ofMillis(500))
+                TITLE_TIMES
         ));
 
         target.sendActionBar(lang.msgNoPrefix(target, LangKey.NOTIFY_PAY_ACTION_RECEIVED, Map.of(
@@ -169,10 +174,8 @@ public class NotificationManager {
     // ============ Баланс ============
 
     public void showSelfBalance(Player player, BigDecimal balance) {
-        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
         Component msg = Component.empty()
-                .append(Component.text(line).color(NamedTextColor.GOLD))
+                .append(line(NamedTextColor.GOLD))
                 .append(Component.newline())
                 .append(lang.msgNoPrefix(player, LangKey.NOTIFY_BALANCE_SELF_TITLE)
                         .color(NamedTextColor.GOLD)
@@ -185,7 +188,7 @@ public class NotificationManager {
                         .hoverEvent(HoverEvent.showText(
                                 lang.msgNoPrefix(player, LangKey.NOTIFY_BALANCE_SELF_HOVER))))
                 .append(Component.newline())
-                .append(Component.text(line).color(NamedTextColor.GOLD));
+                .append(line(NamedTextColor.GOLD));
 
         player.sendMessage(msg);
         player.sendActionBar(lang.msgNoPrefix(player, LangKey.NOTIFY_BALANCE_ACTION,
@@ -195,10 +198,8 @@ public class NotificationManager {
     }
 
     public void showOtherBalance(Player viewer, String targetName, BigDecimal balance) {
-        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
         Component msg = Component.empty()
-                .append(Component.text(line).color(NamedTextColor.AQUA))
+                .append(line(NamedTextColor.AQUA))
                 .append(Component.newline())
                 .append(lang.msgNoPrefix(viewer, LangKey.NOTIFY_BALANCE_OTHER_TITLE)
                         .color(NamedTextColor.AQUA)
@@ -216,7 +217,7 @@ public class NotificationManager {
                         .color(NamedTextColor.GREEN)
                         .decoration(TextDecoration.BOLD, true))
                 .append(Component.newline())
-                .append(Component.text(line).color(NamedTextColor.AQUA));
+                .append(line(NamedTextColor.AQUA));
 
         viewer.sendMessage(msg);
     }
@@ -231,10 +232,8 @@ public class NotificationManager {
                                    BigDecimal tax,
                                    BigDecimal netAmount,
                                    NamedTextColor accent) {
-        String line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━";
-
         Component result = Component.empty()
-                .append(Component.text(line).color(accent))
+                .append(line(accent))
                 .append(Component.newline())
                 .append(Component.text("  "))
                 .append(title.color(accent).decoration(TextDecoration.BOLD, true))
@@ -273,7 +272,7 @@ public class NotificationManager {
                         .color(NamedTextColor.GREEN)
                         .decoration(TextDecoration.BOLD, true))
                 .append(Component.newline())
-                .append(Component.text(line).color(accent));
+                .append(line(accent));
 
         return result;
     }

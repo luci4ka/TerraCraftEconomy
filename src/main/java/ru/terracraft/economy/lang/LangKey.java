@@ -1,12 +1,7 @@
-package ru.net.terracraft.eco.lang;
+package ru.terracraft.economy.lang;
 
-/**
- * Все ключи языковых файлов.
- * Соответствие: {@code LangKey.PAY_SENT} → ключ {@code "pay.sent"} в YAML.
- */
 public enum LangKey {
 
-    // general
     GENERAL_ONLY_PLAYERS("general.only-players"),
     GENERAL_NO_PERMISSION("general.no-permission"),
     GENERAL_PLAYER_NOT_FOUND("general.player-not-found"),
@@ -15,15 +10,15 @@ public enum LangKey {
     GENERAL_NEGATIVE_AMOUNT("general.negative-amount"),
     GENERAL_SELF_ACTION("general.self-action"),
     GENERAL_RELOADED("general.reloaded"),
+    GENERAL_PAYCONFIRM("general.payconfirm"),
+    GENERAL_PAYCONFIRM_TIMEOUT("general.payconfirm-timeout"),
 
-    // balance
     BALANCE_SELF("balance.self"),
     BALANCE_OTHER("balance.other"),
     BALANCE_TOP_HEADER("balance.top-header"),
     BALANCE_TOP_LINE("balance.top-line"),
     BALANCE_TOP_EMPTY("balance.top-empty"),
 
-    // pay
     PAY_SUCCESS_SENDER("pay.success-sender"),
     PAY_SUCCESS_TARGET("pay.success-target"),
     PAY_TAX_NOTICE("pay.tax-notice"),
@@ -32,14 +27,13 @@ public enum LangKey {
     PAY_OFFLINE_SUMMARY("pay.offline-summary"),
     PAY_INSUFFICIENT_FUNDS("pay.insufficient-funds"),
 
-    // eco
     ECO_GIVE("eco.give"),
     ECO_TAKE("eco.take"),
     ECO_TAKE_INSUFFICIENT("eco.take-insufficient"),
     ECO_SET("eco.set"),
     ECO_RESET("eco.reset"),
+    ECO_CLEANUP("eco.cleanup"),
 
-    // notify
     NOTIFY_PAY_SENT_TITLE("notify.pay.sent-title"),
     NOTIFY_PAY_LABEL_TARGET("notify.pay.label-target"),
     NOTIFY_PAY_RECEIVED_TITLE("notify.pay.received-title"),
@@ -65,15 +59,14 @@ public enum LangKey {
     NOTIFY_BALANCE_SELF_HOVER("notify.balance.self-hover"),
     NOTIFY_BALANCE_OTHER_TITLE("notify.balance.other-title"),
     NOTIFY_BALANCE_OTHER_HOVER("notify.balance.other-hover"),
+    ABBREV_K("abbrev.k"),
+    ABBREV_M("abbrev.m"),
+    ABBREV_B("abbrev.b"),
     NOTIFY_BALANCE_ACTION("notify.balance.action");
 
     private final String key;
 
-    LangKey(String key) {
-        this.key = key;
-    }
+    LangKey(String key) { this.key = key; }
 
-    public String key() {
-        return key;
-    }
+    public String key() { return key; }
 }

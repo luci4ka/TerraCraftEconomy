@@ -122,7 +122,9 @@ public class TerrEcoAdminCommandNode {
                         send(sender, LangKey.GENERAL_PLAYER_NOT_FOUND, Map.of("target", args.getRaw("target")));
                         return;
                     }
-                    economyService.set(target.getUniqueId(), plugin.getPluginConfig().economy.startingBalance);
+                    var cfg = plugin.getPluginConfig().economy;
+                    BigDecimal resetValue = cfg.giveStartingBalance ? cfg.startingBalance : BigDecimal.ZERO;
+                    economyService.set(target.getUniqueId(), resetValue);
                     send(sender, LangKey.ECO_RESET, Map.of("target", displayName(target)));
                 });
     }

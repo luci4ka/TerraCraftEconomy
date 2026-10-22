@@ -48,20 +48,16 @@ public class PlayerConnectionListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        // Всё, что касается БД, — в фоновом потоке
         repo.existsAsync(uuid).thenCompose(exists -> {
             if (!exists) {
-                // Новый игрок: создаём счёт в кэше (главный поток) и в БД (async)
                 return CompletableFuture.completedFuture((BigDecimal) null);
             }
             return repo.getBalanceAsync(uuid).thenApply(balance -> balance);
         }).thenAccept(balance -> {
-            // Возвращаемся в главный поток для работы с кэшем и игроком
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
 
                 if (balance == null) {
-                    // Новый игрок
                     cache.createAccount(uuid);
                     repo.createAsync(uuid, player.getName(), config.economy.startingBalance);
                 } else {
@@ -81,6 +77,13 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
+
+        // Если аккаунт ещё не успел загрузиться (быстрый rejoin до завершения
+        // existsAsync/getBalanceAsync), сохранять нечего — иначе затрём реальный
+        // баланс нулём.
+        if (!cache.hasAccount(uuid)) {
+            return;
+        }
         repo.updateBalanceAsync(uuid, cache.getBalance(uuid));
     }
 
@@ -92,28 +95,31 @@ public class PlayerConnectionListener implements Listener {
                 return CompletableFuture.completedFuture((Void) null);
             }
 
-            // Зачисляем платежи в кэш — это должно быть в главном потоке
             BigDecimal total = BigDecimal.ZERO;
             for (PlayerRepository.PendingPayment p : pending) {
                 total = total.add(p.amount());
             }
             final BigDecimal finalTotal = total;
 
-            // Удаляем записи из БД асинхронно
-            for (PlayerRepository.PendingPayment p : pending) {
-                repo.deletePendingPaymentAsync(p.id());
-            }
-
-            // Последний отправитель для отображения
             UUID lastSenderUuid = pending.get(pending.size() - 1).senderUuid();
             return repo.getNameByUuidAsync(lastSenderUuid).thenAccept(lastSender -> {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) return;
 
-                    // Зачисляем в кэш и показываем уведомление
+                    // 1) Сначала зачисляем в кэш (синхронно, в главном потоке).
+                    //    Если сервер упадёт между зачислением и удалением,
+                    //    при следующем входе платёж зачислится повторно — это
+                    //    менее опасно, чем потерять платёж (дубль можно
+                    //    отследить по transactions и откатить вручную).
                     for (PlayerRepository.PendingPayment p : pending) {
                         economyService.deposit(uuid, p.amount());
                     }
+
+                    // 2) Только после успешного зачисления удаляем записи.
+                    for (PlayerRepository.PendingPayment p : pending) {
+                        repo.deletePendingPaymentAsync(p.id());
+                    }
+
                     notifier.offlinePaymentDelivered(player, lastSender,
                             finalTotal, pending.size(), finalTotal);
                 });

@@ -28,86 +28,110 @@ public class EconomyService {
     }
 
     public void createAccount(UUID uuid, String name) {
-        cache.createAccount(uuid);
-        repo.createAsync(uuid, name, config.economy.startingBalance);
+        var starting = config.economy.giveStartingBalance
+                ? config.economy.startingBalance
+                : BigDecimal.ZERO;
+        cache.createAccount(uuid, starting);
+        repo.createAsync(uuid, name, starting);
     }
 
     public void loadAccount(UUID uuid, BigDecimal balance) {
         cache.load(uuid, balance);
     }
 
-    /** Начисление. Возвращает новый баланс. */
+    /**
+     * Начисление. Если упёрлись в maxBalance — «излишек» не зачисляется.
+     * Возвращает новый баланс.
+     */
     public BigDecimal deposit(UUID uuid, BigDecimal amount) {
+        return depositAndReport(uuid, amount).newBalance();
+    }
+
+    /**
+     * Начисление с отчётом: возвращает, сколько реально зачислено (credited)
+     * и сколько не поместилось (overflow). Нужно Vault-провайдеру, чтобы
+     * корректно отдавать EconomyResponse.SUCCESS/FAILURE.
+     */
+    public EconomyCache.DepositResult depositAndReport(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
-        var newBalance = cache.deposit(uuid, scaled);
-        repo.updateBalanceAsync(uuid, newBalance);
-        repo.logTransactionAsync(null, uuid, scaled, "DEPOSIT");
-        return newBalance;
+        var result = cache.depositCapped(uuid, scaled);
+        repo.updateBalanceAsync(uuid, result.newBalance());
+        repo.logTransactionAsync(null, uuid, result.credited(), "DEPOSIT");
+        if (result.overflow().signum() > 0) {
+            // Логируем «потерянный» излишек — иначе он исчезнет молча.
+            repo.logTransactionAsync(null, uuid, result.overflow(), "DEPOSIT_OVERFLOW");
+        }
+        return result;
     }
 
     /** Списание. Возвращает null, если недостаточно средств. */
     public BigDecimal withdraw(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
-        if (cache.getBalance(uuid).compareTo(scaled) < 0) {
+        var newBalance = cache.withdrawIfEnough(uuid, scaled).orElse(null);
+        if (newBalance == null) {
             return null;
         }
-        var newBalance = cache.withdraw(uuid, scaled);
         repo.updateBalanceAsync(uuid, newBalance);
         repo.logTransactionAsync(uuid, null, scaled, "WITHDRAW");
         return newBalance;
     }
 
-    /** Установка баланса напрямую (админ). */
+    /** Установка баланса напрямую (админ). Валидирует maxBalance. */
     public BigDecimal set(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
-        cache.load(uuid, scaled);
-        repo.updateBalanceAsync(uuid, scaled);
-        repo.logTransactionAsync(null, uuid, scaled, "SET");
-        return scaled;
+        var applied = cache.set(uuid, scaled);
+        repo.updateBalanceAsync(uuid, applied);
+        repo.logTransactionAsync(null, uuid, applied, "SET");
+        return applied;
     }
 
     /** Перевод между игроками без налога. */
     public boolean transfer(UUID from, UUID to, BigDecimal amount) {
-        var scaled = scale(amount);
-
-        if (cache.getBalance(from).compareTo(scaled) < 0) {
-            return false;
-        }
-
-        BigDecimal newFrom;
-        BigDecimal newTo;
-
-        synchronized (cache) {
-            newFrom = cache.withdraw(from, scaled);
-            newTo = cache.deposit(to, scaled);
-        }
-
-        repo.updateBalanceAsync(from, newFrom);
-        repo.updateBalanceAsync(to, newTo);
-        repo.logTransactionAsync(from, to, scaled, "TRANSFER");
-
-        return true;
+        return doTransfer(from, to, amount, scale(amount), "TRANSFER");
     }
 
     /** Перевод с налогом: отправитель теряет amount, получатель получает (amount − tax). */
     public boolean transferWithTax(UUID from, UUID to, BigDecimal amount, BigDecimal tax) {
         var scaled = scale(amount);
         var net = scale(amount.subtract(tax));
+        if (net.signum() < 0) {
+            return false;
+        }
+        boolean ok = doTransfer(from, to, scaled, net, "PAY");
+        if (ok && tax.signum() > 0) {
+            // Фиксируем налог в аудите — иначе сумма WITHDRAW (-amount)
+            // и DEPOSIT (+net) не сойдётся, и налог «исчезнет» из истории.
+            repo.logTransactionAsync(from, null, scale(tax), "TAX");
+        }
+        return ok;
+    }
+
+    private boolean doTransfer(UUID from, UUID to, BigDecimal debit, BigDecimal credit, String type) {
+        if (from.equals(to)) {
+            return false;
+        }
 
         BigDecimal newFrom;
-        BigDecimal newTo;
+        EconomyCache.DepositResult depositResult;
 
         synchronized (cache) {
-            if (cache.getBalance(from).compareTo(scaled) < 0) {
+            var withdrawn = cache.withdrawIfEnough(from, debit);
+            if (withdrawn.isEmpty()) {
                 return false;
             }
-            newFrom = cache.withdraw(from, scaled);
-            newTo = cache.deposit(to, net);
+            newFrom = withdrawn.get();
+
+            depositResult = cache.depositCapped(to, credit);
+
+            if (depositResult.overflow().signum() > 0) {
+                cache.load(from, newFrom.add(debit));
+                return false;
+            }
         }
 
         repo.updateBalanceAsync(from, newFrom);
-        repo.updateBalanceAsync(to, newTo);
-        repo.logTransactionAsync(from, to, scaled, "PAY");
+        repo.updateBalanceAsync(to, depositResult.newBalance());
+        repo.logTransactionAsync(from, to, debit, type);
 
         return true;
     }
@@ -122,9 +146,5 @@ public class EconomyService {
 
     public void queueOfflinePayment(UUID recipient, UUID sender, BigDecimal amount) {
         repo.insertPendingPayment(recipient, sender, amount);
-        // Офлайн-платёж ещё не доставлен, но факт списания у отправителя
-        // уже зафиксирован в withdraw() выше. Отдельную запись не создаём,
-        // чтобы не дублировать: когда платёж доставится, сработает deposit()
-        // с типом DEPOSIT.
     }
 }

@@ -1,4 +1,4 @@
-# TerrEconomy
+# TerraCraftEconomy
 
 [![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/luci4ka/TerrCraftEconomy/releases)
 [![Paper](https://img.shields.io/badge/Paper-26.3-orange.svg)](https://papermc.io/)
@@ -14,12 +14,13 @@
 - 💰 **Полноценная экономика** — баланс, переводы, админ-команды
 - 🔌 **Vault-совместимость** — работает со всеми плагинами через Vault
 - 📬 **Офлайн-переводы** — платёж доставляется при входе получателя
-- 💸 **Налог на перевод** — настраиваемый процент с каждой транзакции
+- 💸 **Налог на перевод** — настраиваемый процент, минимум/максимум, опция «в казну»
 - ✅ **Подтверждение крупных переводов** — защита от опечаток через `/payconfirm`
 - 📜 **Логирование транзакций** — все операции пишутся в таблицу `transactions`
 - 🧹 **Очистка мёртвых аккаунтов** — `/eco cleanup <days>`
 - 🌍 **Мультиязычность** — у каждого игрока свой язык (клиентская локаль)
 - 🎨 **Красивые уведомления** — Title, Action Bar, hover/click-события
+- 🔊 **Настраиваемые звуки** — отдельно для онлайн-перевода и доставки офлайн-платежей
 - 💾 **MineSQL + MariaDB** — общий пул соединений для всех плагинов
 - ⚡ **Асинхронные операции** — БД не блокирует главный поток
 - 🔄 **ConfigLib** — автоматическое обновление конфига
@@ -71,9 +72,9 @@ databases:
 | `/eco give <игрок> <сумма>` | Выдать деньги | `terracraft.economy.admin` |
 | `/eco take <игрок> <сумма>` | Забрать деньги | `terracraft.economy.admin` |
 | `/eco set <игрок> <сумма>` | Установить баланс | `terracraft.economy.admin` |
-| `/eco reset <игрок>` | Сбросить баланс | `terracraft.economy.admin` |
+| `/eco reset <игрок>` | Сбросить баланс к стартовому | `terracraft.economy.admin` |
 | `/eco cleanup <days>` | Удалить неактивные аккаунты с нулевым балансом | `terracraft.economy.admin` |
-| `/eco reload` | Перезагрузить конфиг и языки | `terracraft.economy.admin` |
+| `/eco reload` | Перезагрузить конфиг, языки и команды | `terracraft.economy.admin` |
 
 ---
 
@@ -99,7 +100,10 @@ database:
   source-id: economy-db
 
 economy:
-  # Стартовый баланс новых игроков
+  # Выдавать стартовый баланс новым игрокам.
+  # false — новый аккаунт создаётся с нулём, starting-balance игнорируется.
+  give-starting-balance: true
+  # Стартовый баланс новых игроков (если give-starting-balance = true)
   starting-balance: 0.0
   # Максимальный баланс
   max-balance: 1000000000.0
@@ -121,6 +125,8 @@ pay:
   min-tax-amount: 1.0
   # Максимальный налог с одной операции (0 — без ограничения)
   max-tax-amount: 1000.0
+  # true — налог уходит в казну сервера, false — сгорает
+  tax-to-server: true
   # Разрешить переводы офлайн-игрокам
   allow-offline: true
   # Порог суммы, выше которого требуется подтверждение (0 — отключено)
@@ -128,10 +134,41 @@ pay:
   # Время на подтверждение (секунды)
   confirm-timeout: 15
 
+notify:
+  # Звук при получении перевода (онлайн)
+  receive-sound:
+    enabled: true
+    key: "entity.experience_orb.pickup"
+    volume: 1.0
+    pitch: 1.2
+  # Звук при доставке офлайн-платежей при входе
+  offline-delivered-sound:
+    enabled: true
+    key: "entity.experience_orb.pickup"
+    volume: 1.0
+    pitch: 1.2
+
 updates:
   # Проверять обновления при старте сервера
   check: true
 ```
+
+> **Про ключи конфига.** ConfigLib сериализует поля в kebab-case (`startingBalance` → `starting-balance`). В коде поля называются в camelCase — это нормально, ConfigLib сам преобразует.
+
+---
+
+## 🔊 Звуки
+
+Звуки проигрываются через Adventure Sound API:
+- `notify.receive-sound` — когда игрок получает перевод **онлайн**.
+- `notify.offline-delivered-sound` — когда игроку доставляются **офлайн-платежи** при входе.
+
+Категория звука — `PLAYER` (подчиняется настройке «Звуки игроков» в клиенте). Если игрок отключил эту категорию, звук не сыграет — это ожидаемо.
+
+Ключ звука — любой валидный `resource location` Minecraft. Хорошие кандидаты:
+- `entity.experience_orb.pickup` — привычный «дзынь» опыта
+- `block.note_block.pling` — мягкий, нейтральный
+- `entity.item.pickup` — короткий, но может сливаться с обычным подбором предметов
 
 ---
 
@@ -164,6 +201,10 @@ Economy economy = rsp.getProvider();
 economy.depositPlayer(player, 100.0);
 ```
 
+### Банки
+
+`hasBankSupport() = false` — общие счёта (Vault bank accounts) **не поддерживаются**. Это стандартная практика для базовых экономик: банки — нишевая фича, которую большинство Vault-потребителей не использует. При попытке вызвать bank-методы возвращается `EconomyResponse.NOT_IMPLEMENTED`.
+
 ### PlaceholderAPI
 
 Плагин регистрирует собственное расширение `terr_economy`. Доступные плейсхолдеры:
@@ -185,7 +226,7 @@ economy.depositPlayer(player, 100.0);
 ### Требования
 
 - **JDK 25** ([Adoptium](https://adoptium.net/))
-- **Gradle 8.x** (или используй wrapper)
+- **Gradle 9.0** (или используй wrapper)
 
 ### Команды
 
@@ -218,22 +259,28 @@ src/main/resources/
     └── en_US.yml
 ```
 
+### Зависимости в `paper-plugin.yml`
+
+`Vault`, `CommandAPI` и `MineSQL` объявлены с `join-classpath: true` — их классы используются в runtime (реализация Vault-провайдера, регистрация команд, доступ к `SQLManager`). `PlaceholderAPI` — опционально.
+
 ---
 
 ## 🗺️ Roadmap
 
 - [x] Базовая экономика + Vault
 - [x] Переводы между игроками
-- [x] Налог на перевод
+- [x] Налог на перевод (с учётом `tax-to-server`)
 - [x] Офлайн-переводы
 - [x] Локализация по клиенту
-- [x] Красивые уведомления
+- [x] Красивые уведомления (Title, ActionBar, hover/click)
+- [x] Настраиваемые звуки уведомлений
 - [x] ConfigLib + автообновление конфига
 - [x] Подтверждение крупных переводов
 - [x] Логирование транзакций в БД
 - [x] Очистка мёртвых аккаунтов
 - [x] PlaceholderAPI-расширение (включая сокращения)
 - [x] Миграция на MineSQL + MariaDB
+- [x] Флаг `give-starting-balance` для отключения стартового бонуса
 - [ ] `/eco history <player>` — просмотр истории транзакций в чате
 - [ ] Отдельный тип транзакции `OFFLINE_PAY` для офлайн-переводов
 
@@ -248,4 +295,3 @@ MIT License — используй свободно, изменяй, распр�
 ## 💬 Поддержка
 
 - **Issues**: [github.com/luci4ka/TerrCraftEconomy/issues](https://github.com/luci4ka/TerrCraftEconomy/issues)
-

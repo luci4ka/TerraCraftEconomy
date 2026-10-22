@@ -29,7 +29,9 @@ dependencies {
     implementation 'de.exlll:configlib-yaml:4.8.1'
     implementation 'com.github.ez-plugins:mc-plugin-update-notifier:1.0.0'
     implementation 'org.bstats:bstats-bukkit:3.2.1'
+
 }
+
 
 def targetJavaVersion = 25
 

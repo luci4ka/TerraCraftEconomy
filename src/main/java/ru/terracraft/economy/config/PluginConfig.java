@@ -20,6 +20,9 @@ public final class PluginConfig {
     @Comment("Настройки переводов между игроками")
     public PaySection pay = new PaySection();
 
+    @Comment("Уведомления: звуки и оформление")
+    public NotifySection notify = new NotifySection();
+
     @Comment("Проверка обновлений плагина")
     public UpdatesSection updates = new UpdatesSection();
 
@@ -40,7 +43,13 @@ public final class PluginConfig {
 
     @Configuration
     public static final class EconomySection {
-        @Comment("Стартовый баланс новых игроков")
+        @Comment("""
+            Выдавать стартовый баланс новым игрокам.
+            false — новый аккаунт создаётся с нулём, startingBalance игнорируется.
+            """)
+        public boolean giveStartingBalance = true;
+
+        @Comment("Стартовый баланс новых игроков (учитывается только если giveStartingBalance = true)")
         public BigDecimal startingBalance = BigDecimal.ZERO;
 
         @Comment("Максимальный баланс")
@@ -84,6 +93,33 @@ public final class PluginConfig {
 
         @Comment("Время на подтверждение (секунды)")
         public int confirmTimeout = 15;
+    }
+
+    @Configuration
+    public static final class NotifySection {
+        @Comment("Звук при получении перевода (онлайн)")
+        public SoundSection receiveSound = new SoundSection();
+
+        @Comment("Звук при доставке офлайн-платежей при входе")
+        public SoundSection offlineDeliveredSound = new SoundSection();
+
+        @Configuration
+        public static final class SoundSection {
+            @Comment("Включить звук")
+            public boolean enabled = true;
+
+            @Comment("""
+                    Ключ звука Minecraft (resource location).
+                    Примеры: entity.experience_orb.pickup, block.note_block.pling, entity.item.pickup
+                    """)
+            public String key = "entity.experience_orb.pickup";
+
+            @Comment("Громкость (0.0–1.0)")
+            public float volume = 1.0f;
+
+            @Comment("Высота тона (0.5–2.0)")
+            public float pitch = 1.2f;
+        }
     }
 
     @Configuration

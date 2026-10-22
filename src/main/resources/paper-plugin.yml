@@ -14,11 +14,13 @@ dependencies:
       required: true
       join-classpath: true
     CommandAPI:
-       load: BEFORE
-       required: true
+      load: BEFORE
+      required: true
+      join-classpath: true
     MineSQL:
-       load: BEFORE
-       required: true
+      load: BEFORE
+      required: true
+      join-classpath: true
     PlaceholderAPI:
       load: BEFORE
       required: false

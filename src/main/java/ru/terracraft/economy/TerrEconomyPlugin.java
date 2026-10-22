@@ -33,6 +33,7 @@ public final class TerrEconomyPlugin extends JavaPlugin {
     private LangManager langManager;
     private NotificationManager notifier;
     private PendingPayManager pendingPayManager;
+    private CommandRegistrar commandRegistrar;
 
     @Override
     public void onEnable() {
@@ -66,7 +67,8 @@ public final class TerrEconomyPlugin extends JavaPlugin {
                 new PlayerConnectionListener(this, cache, playerRepository, pluginConfig, economyService, notifier),
                 this);
 
-        new CommandRegistrar(this, economyService, langManager, notifier).register();
+        this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
+        this.commandRegistrar.register();
 
         // Автосохранение
         long interval = pluginConfig.economy.autoSaveInterval * 20L;
@@ -87,20 +89,51 @@ public final class TerrEconomyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // 1) Снимаем команды, чтобы при перезагрузке плагина не было дублей.
+        if (commandRegistrar != null) {
+            commandRegistrar.unregister();
+        }
+
+        // 2) Дожидаемся завершения всех async-задач репозитория.
+        if (playerRepository != null) {
+            playerRepository.shutdown();
+        }
+
+        // 3) Flush кэша — записываем актуальные балансы.
         if (cache != null && playerRepository != null) {
             cache.flushAll(playerRepository);
         }
+
+        // 4) Закрываем провайдер (no-op, пул MineSQL управляется извне).
         if (databaseProvider != null) {
             databaseProvider.close();
         }
         getLogger().info("TerrEconomy выключен.");
     }
 
+    /**
+     * Полный reload: конфиг, локализация, notifier и команды пересоздаются
+     * с актуальными ссылками на PluginConfig.
+     *
+     * Важно: economyService/cache/repo/БД не пересоздаются — они хранят
+     * состояние (кэш балансов), и их пересоздание привело бы к рассинхрону
+     * с БД. Меняются только «читающие» компоненты.
+     */
     public void reloadPlugin() {
         configLoader.load();
         this.pluginConfig = configLoader.get();
         langManager.reload();
         this.notifier = new NotificationManager(pluginConfig, langManager);
+
+        // Перерегистрируем команды с новыми ссылками на notifier/pluginConfig.
+        // unregister и register — синхронные, поэтому безопасно делать
+        // прямо в главном потоке (reload вызывается из /eco reload).
+        if (commandRegistrar != null) {
+            commandRegistrar.unregister();
+        }
+        this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
+        this.commandRegistrar.register();
+
         getLogger().info("Конфигурация перезагружена.");
     }
 

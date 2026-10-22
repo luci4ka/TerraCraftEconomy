@@ -121,8 +121,21 @@ public class TerrEconomyProvider implements Economy {
         if (uuid == null) return fail("Игрок не найден");
         if (amount < 0) return fail("Сумма не может быть отрицательной");
 
-        var newBalance = service.deposit(uuid, BigDecimal.valueOf(amount));
-        return new EconomyResponse(amount, newBalance.doubleValue(),
+        var result = service.depositAndReport(uuid, BigDecimal.valueOf(amount));
+
+        if (result.overflow().signum() > 0) {
+            // Часть суммы не поместилась в maxBalance. Возвращаем FAILURE,
+            // чтобы Vault-потребитель не считал операцию полностью успешной.
+            // balance в ответе — фактический новый баланс.
+            return new EconomyResponse(amount, result.newBalance().doubleValue(),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Превышен максимальный баланс: зачислено "
+                            + result.credited().toPlainString()
+                            + ", не поместилось "
+                            + result.overflow().toPlainString());
+        }
+
+        return new EconomyResponse(amount, result.newBalance().doubleValue(),
                 EconomyResponse.ResponseType.SUCCESS, null);
     }
 

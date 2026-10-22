@@ -10,28 +10,39 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 
 public class PlayerRepository {
 
     private final Plugin plugin;
     private final DatabaseProvider db;
-    private final ExecutorService executor;
+    private final ThreadPoolExecutor executor;
 
     public PlayerRepository(Plugin plugin, DatabaseProvider db) {
         this.plugin = plugin;
         this.db = db;
-        this.executor = Executors.newFixedThreadPool(4, r -> {
-            var t = Thread.ofPlatform()
-                    .name("TerrEconomy-DB")
-                    .daemon(true)
-                    .unstarted(r);
-            return t;
-        });
+
+        AtomicInteger counter = new AtomicInteger();
+        this.executor = new ThreadPoolExecutor(
+                4, 4,
+                60L, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(1024),
+                r -> {
+                    Thread t = new Thread(r,
+                            "TerrEconomy-DB-" + counter.incrementAndGet());
+                    t.setDaemon(true);
+                    return t;
+                },
+                // При переполнении очереди выполняем задачу в вызывающем потоке —
+                // лучше замедлить вызывающего, чем потерять операцию или упасть по OOM.
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        this.executor.allowCoreThreadTimeOut(true);
     }
 
     public boolean exists(UUID uuid) {
@@ -46,6 +57,10 @@ public class PlayerRepository {
         }
     }
 
+    /**
+     * Синхронное чтение баланса. Бросает IllegalStateException при ошибке БД —
+     * «0» и «БД упала» не должны смешиваться.
+     */
     public BigDecimal getBalance(UUID uuid) {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement("SELECT balance FROM players WHERE uuid = ?")) {
@@ -53,10 +68,10 @@ public class PlayerRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return rs.getBigDecimal("balance");
             }
+            return BigDecimal.ZERO;
         } catch (SQLException e) {
-            log("getBalance", e);
+            throw new IllegalStateException("PlayerRepository.getBalance() failed for " + uuid, e);
         }
-        return BigDecimal.ZERO;
     }
 
     public void create(UUID uuid, String name, BigDecimal startingBalance) {
@@ -73,8 +88,10 @@ public class PlayerRepository {
     }
 
     public void updateBalance(UUID uuid, BigDecimal balance) {
-        String sql = "INSERT INTO players (uuid, balance) VALUES (?, ?) " +
-                "ON DUPLICATE KEY UPDATE balance = VALUES(balance), updated_at = CURRENT_TIMESTAMP";
+        // updated_at обновится автоматически благодаря ON UPDATE CURRENT_TIMESTAMP.
+        // ALIAS вместо VALUES() — VALUES(col) устарел в MariaDB 10.3.3+.
+        String sql = "INSERT INTO players (uuid, balance) VALUES (?, ?) AS new " +
+                "ON DUPLICATE KEY UPDATE balance = new.balance";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -88,7 +105,7 @@ public class PlayerRepository {
     public void updateName(UUID uuid, String name) {
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                     "UPDATE players SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?")) {
+                     "UPDATE players SET name = ? WHERE uuid = ?")) {
             ps.setString(1, name);
             ps.setString(2, uuid.toString());
             ps.executeUpdate();
@@ -97,17 +114,24 @@ public class PlayerRepository {
         }
     }
 
+    // ============ Fire-and-forget async-обёртки ============
+
     public void updateBalanceAsync(UUID uuid, BigDecimal balance) {
-        executor.submit(() -> updateBalance(uuid, balance));
+        executor.execute(() -> updateBalance(uuid, balance));
     }
 
     public void createAsync(UUID uuid, String name, BigDecimal startingBalance) {
-        executor.submit(() -> create(uuid, name, startingBalance));
+        executor.execute(() -> create(uuid, name, startingBalance));
     }
 
     public void updateNameAsync(UUID uuid, String name) {
-        executor.submit(() -> updateName(uuid, name));
+        executor.execute(() -> updateName(uuid, name));
     }
+
+    // ============ CompletableFuture-обёртки ============
+    // «Мягкие» ошибки (нет данных, битый UUID) → дефолт + лог.
+    // «Жёсткие» ошибки БД (SQLException) → пробрасываем, чтобы вызывающий
+    // код не спутал «0» с «БД недоступна».
 
     public CompletableFuture<Boolean> existsAsync(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> exists(uuid), executor)
@@ -116,7 +140,12 @@ public class PlayerRepository {
 
     public CompletableFuture<BigDecimal> getBalanceAsync(UUID uuid) {
         return CompletableFuture.supplyAsync(() -> getBalance(uuid), executor)
-                .exceptionally(ex -> { logFuture("getBalanceAsync", ex); return BigDecimal.ZERO; });
+                .exceptionally(ex -> {
+                    // Для критичного чтения баланса пробрасываем дальше,
+                    // предварительно залогировав.
+                    logFuture("getBalanceAsync", ex);
+                    throw new java.util.concurrent.CompletionException(ex);
+                });
     }
 
     public CompletableFuture<List<PendingPayment>> getPendingPaymentsAsync(UUID recipient) {
@@ -230,7 +259,7 @@ public class PlayerRepository {
     }
 
     public void logTransactionAsync(UUID from, UUID to, BigDecimal amount, String type) {
-        executor.submit(() -> logTransaction(from, to, amount, type));
+        executor.execute(() -> logTransaction(from, to, amount, type));
     }
 
     // ============ Очистка мёртвых аккаунтов ============
@@ -253,6 +282,11 @@ public class PlayerRepository {
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
                 executor.shutdownNow();
+                // Дадим задачам ещё немного времени на реакцию на interrupt.
+                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    plugin.getLogger().warning(
+                            "PlayerRepository: часть задач не завершилась за отведённое время.");
+                }
             }
         } catch (InterruptedException e) {
             executor.shutdownNow();
@@ -266,8 +300,11 @@ public class PlayerRepository {
     }
 
     private void logFuture(String method, Throwable ex) {
+        // Разворачиваем CompletionException, чтобы в логе был исходный SQLException.
+        Throwable cause = (ex instanceof java.util.concurrent.CompletionException && ex.getCause() != null)
+                ? ex.getCause() : ex;
         plugin.getLogger().log(Level.WARNING,
-                "PlayerRepository.%s() async failed: %s".formatted(method, ex.getMessage()), ex);
+                "PlayerRepository.%s() async failed: %s".formatted(method, cause.getMessage()), cause);
     }
 
     public record PendingPayment(long id, UUID senderUuid, BigDecimal amount) {}

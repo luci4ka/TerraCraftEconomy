@@ -34,7 +34,7 @@ public class PlayerRepository {
                 new ArrayBlockingQueue<>(1024),
                 r -> {
                     Thread t = new Thread(r,
-                            "TerrEconomy-DB-" + counter.incrementAndGet());
+                            "economy-db" + counter.incrementAndGet());
                     t.setDaemon(true);
                     return t;
                 },

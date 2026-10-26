@@ -48,18 +48,16 @@ public class PlayerConnectionListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        repo.existsAsync(uuid).thenCompose(exists -> {
-            if (!exists) {
-                return CompletableFuture.completedFuture((BigDecimal) null);
-            }
-            return repo.getBalanceAsync(uuid).thenApply(balance -> balance);
-        }).thenAccept(balance -> {
+        repo.getBalanceOrNullAsync(uuid).thenAccept(balance -> {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
 
                 if (balance == null) {
-                    cache.createAccount(uuid);
-                    repo.createAsync(uuid, player.getName(), config.economy.startingBalance);
+                    BigDecimal starting = config.economy.giveStartingBalance
+                            ? config.economy.startingBalance
+                            : BigDecimal.ZERO;
+                    cache.createAccount(uuid, starting);
+                    repo.createAsync(uuid, player.getName(), starting);
                 } else {
                     cache.load(uuid, balance);
                     repo.updateNameAsync(uuid, player.getName());
@@ -77,13 +75,7 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-
-        // Если аккаунт ещё не успел загрузиться (быстрый rejoin до завершения
-        // existsAsync/getBalanceAsync), сохранять нечего — иначе затрём реальный
-        // баланс нулём.
-        if (!cache.hasAccount(uuid)) {
-            return;
-        }
+        if (!cache.hasAccount(uuid)) return;
         repo.updateBalanceAsync(uuid, cache.getBalance(uuid));
     }
 
@@ -95,35 +87,50 @@ public class PlayerConnectionListener implements Listener {
                 return CompletableFuture.completedFuture((Void) null);
             }
 
-            BigDecimal total = BigDecimal.ZERO;
-            for (PlayerRepository.PendingPayment p : pending) {
-                total = total.add(p.amount());
-            }
-            final BigDecimal finalTotal = total;
-
             UUID lastSenderUuid = pending.get(pending.size() - 1).senderUuid();
-            return repo.getNameByUuidAsync(lastSenderUuid).thenAccept(lastSender -> {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) return;
+            List<Long> ids = pending.stream().map(PlayerRepository.PendingPayment::id).toList();
 
-                    // 1) Сначала зачисляем в кэш (синхронно, в главном потоке).
-                    //    Если сервер упадёт между зачислением и удалением,
-                    //    при следующем входе платёж зачислится повторно — это
-                    //    менее опасно, чем потерять платёж (дубль можно
-                    //    отследить по transactions и откатить вручную).
-                    for (PlayerRepository.PendingPayment p : pending) {
-                        economyService.deposit(uuid, p.amount());
-                    }
+            // Удаление — через репозиторный executor (не commonPool).
+            // Проверку isOnline — в main, чтобы не гонять её в async-потоке.
+            return repo.getNameByUuidAsync(lastSenderUuid).thenCompose(lastSender ->
+                    repo.deletePendingPaymentsAndReturnAsync(ids).thenAccept(deleted -> {
+                        if (deleted.isEmpty()) return;
 
-                    // 2) Только после успешного зачисления удаляем записи.
-                    for (PlayerRepository.PendingPayment p : pending) {
-                        repo.deletePendingPaymentAsync(p.id());
-                    }
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline()) {
+                                // Игрок вышел между delete и зачислением.
+                                // Зачисляем в кэш всё равно — потерять нельзя,
+                                // onQuit/flushAll сохранит balance в БД.
+                                BigDecimal total = BigDecimal.ZERO;
+                                int count = 0;
+                                for (var p : pending) {
+                                    if (!deleted.contains(p.id())) continue;
+                                    economyService.deposit(uuid, p.amount());
+                                    total = total.add(p.amount());
+                                    count++;
+                                }
+                                if (count > 0) {
+                                    plugin.getLogger().info(
+                                            "Офлайн-платежи для " + uuid + " зачислены в кэш, но игрок уже вышел"
+                                                    + " (count=" + count + ", total=" + total.toPlainString() + ")");
+                                }
+                                return;
+                            }
 
-                    notifier.offlinePaymentDelivered(player, lastSender,
-                            finalTotal, pending.size(), finalTotal);
-                });
-            });
+                            BigDecimal total = BigDecimal.ZERO;
+                            int count = 0;
+                            for (var p : pending) {
+                                if (!deleted.contains(p.id())) continue;
+                                economyService.deposit(uuid, p.amount());
+                                total = total.add(p.amount());
+                                count++;
+                            }
+                            if (count > 0) {
+                                notifier.offlinePaymentDelivered(player, lastSender, total, count, total);
+                            }
+                        });
+                    })
+            );
         }).exceptionally(ex -> {
             plugin.getLogger().log(Level.WARNING,
                     "Не удалось доставить офлайн-платежи для " + player.getName(), ex);

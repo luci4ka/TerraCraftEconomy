@@ -9,6 +9,8 @@ import java.util.UUID;
 
 public class EconomyService {
 
+    public enum TransferOutcome { SUCCESS, INSUFFICIENT, TARGET_OVERFLOW, SAME_ACCOUNT }
+
     private final EconomyCache cache;
     private final PlayerRepository repo;
     private final PluginConfig config;
@@ -39,34 +41,26 @@ public class EconomyService {
         cache.load(uuid, balance);
     }
 
-    /**
-     * Начисление. Если упёрлись в maxBalance — «излишек» не зачисляется.
-     * Возвращает новый баланс.
-     */
     public BigDecimal deposit(UUID uuid, BigDecimal amount) {
         return depositAndReport(uuid, amount).newBalance();
     }
 
-    /**
-     * Начисление с отчётом: возвращает, сколько реально зачислено (credited)
-     * и сколько не поместилось (overflow). Нужно Vault-провайдеру, чтобы
-     * корректно отдавать EconomyResponse.SUCCESS/FAILURE.
-     */
     public EconomyCache.DepositResult depositAndReport(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
         var result = cache.depositCapped(uuid, scaled);
         repo.updateBalanceAsync(uuid, result.newBalance());
         repo.logTransactionAsync(null, uuid, result.credited(), "DEPOSIT");
         if (result.overflow().signum() > 0) {
-            // Логируем «потерянный» излишек — иначе он исчезнет молча.
             repo.logTransactionAsync(null, uuid, result.overflow(), "DEPOSIT_OVERFLOW");
         }
         return result;
     }
 
-    /** Списание. Возвращает null, если недостаточно средств. */
     public BigDecimal withdraw(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
+        if (scaled.signum() <= 0) {
+            return cache.getBalance(uuid);
+        }
         var newBalance = cache.withdrawIfEnough(uuid, scaled).orElse(null);
         if (newBalance == null) {
             return null;
@@ -76,7 +70,6 @@ public class EconomyService {
         return newBalance;
     }
 
-    /** Установка баланса напрямую (админ). Валидирует maxBalance. */
     public BigDecimal set(UUID uuid, BigDecimal amount) {
         var scaled = scale(amount);
         var applied = cache.set(uuid, scaled);
@@ -85,66 +78,62 @@ public class EconomyService {
         return applied;
     }
 
-    /** Перевод между игроками без налога. */
     public boolean transfer(UUID from, UUID to, BigDecimal amount) {
-        return doTransfer(from, to, amount, scale(amount), "TRANSFER");
+        return doTransfer(from, to, scale(amount), scale(amount), "TRANSFER", BigDecimal.ZERO)
+                == TransferOutcome.SUCCESS;
     }
 
-    /** Перевод с налогом: отправитель теряет amount, получатель получает (amount − tax). */
     public boolean transferWithTax(UUID from, UUID to, BigDecimal amount, BigDecimal tax) {
+        return transferWithTaxDetailed(from, to, amount, tax) == TransferOutcome.SUCCESS;
+    }
+
+    public TransferOutcome transferWithTaxDetailed(UUID from, UUID to,
+                                                   BigDecimal amount, BigDecimal tax) {
         var scaled = scale(amount);
         var net = scale(amount.subtract(tax));
         if (net.signum() < 0) {
-            return false;
+            return TransferOutcome.INSUFFICIENT;
         }
-        boolean ok = doTransfer(from, to, scaled, net, "PAY");
-        if (ok && tax.signum() > 0) {
-            // Фиксируем налог в аудите — иначе сумма WITHDRAW (-amount)
-            // и DEPOSIT (+net) не сойдётся, и налог «исчезнет» из истории.
-            repo.logTransactionAsync(from, null, scale(tax), "TAX");
-        }
-        return ok;
+        return doTransfer(from, to, scaled, net, "PAY", scale(tax));
     }
 
-    private boolean doTransfer(UUID from, UUID to, BigDecimal debit, BigDecimal credit, String type) {
+    private TransferOutcome doTransfer(UUID from, UUID to, BigDecimal debit, BigDecimal credit,
+                                       String type, BigDecimal tax) {
         if (from.equals(to)) {
-            return false;
+            return TransferOutcome.SAME_ACCOUNT;
         }
 
-        BigDecimal newFrom;
-        EconomyCache.DepositResult depositResult;
-
-        synchronized (cache) {
-            var withdrawn = cache.withdrawIfEnough(from, debit);
-            if (withdrawn.isEmpty()) {
-                return false;
-            }
-            newFrom = withdrawn.get();
-
-            depositResult = cache.depositCapped(to, credit);
-
-            if (depositResult.overflow().signum() > 0) {
-                cache.load(from, newFrom.add(debit));
-                return false;
-            }
+        var result = cache.transferIfPossible(from, to, debit, credit);
+        if (result instanceof EconomyCache.TransferResult.Insufficient) {
+            return TransferOutcome.INSUFFICIENT;
+        }
+        if (result instanceof EconomyCache.TransferResult.Overflow) {
+            return TransferOutcome.TARGET_OVERFLOW;
+        }
+        if (!(result instanceof EconomyCache.TransferResult.Success success)) {
+            // SameAccount — уже отсечён выше, но на всякий случай.
+            return TransferOutcome.SAME_ACCOUNT;
         }
 
-        repo.updateBalanceAsync(from, newFrom);
-        repo.updateBalanceAsync(to, depositResult.newBalance());
+        repo.updateBalanceAsync(from, success.newFromBalance());
+        repo.updateBalanceAsync(to, success.newToBalance());
         repo.logTransactionAsync(from, to, debit, type);
-
-        return true;
+        if (tax.signum() > 0) {
+            repo.logTransactionAsync(from, null, tax, "TAX");
+        }
+        return TransferOutcome.SUCCESS;
     }
 
     public boolean hasEnough(UUID uuid, BigDecimal amount) {
         return cache.getBalance(uuid).compareTo(scale(amount)) >= 0;
     }
 
-    private BigDecimal scale(BigDecimal value) {
-        return value.setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
-    }
-
     public void queueOfflinePayment(UUID recipient, UUID sender, BigDecimal amount) {
         repo.insertPendingPayment(recipient, sender, amount);
+        repo.logTransactionAsync(sender, recipient, amount, "PAY_QUEUED");
+    }
+
+    private BigDecimal scale(BigDecimal value) {
+        return value.setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
     }
 }

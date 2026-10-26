@@ -11,6 +11,7 @@ import ru.terracraft.economy.lang.LangManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Locale;
 
 public class TerrEconomyExpansion extends PlaceholderExpansion {
 
@@ -37,34 +38,23 @@ public class TerrEconomyExpansion extends PlaceholderExpansion {
         if (player == null) return null;
 
         BigDecimal balance = economyService.getBalance(player.getUniqueId());
-        if (balance == null) balance = BigDecimal.ZERO;
 
-        return switch (params.toLowerCase()) {
+        return switch (params.toLowerCase(Locale.ROOT)) {
             case "balance" -> balance.toPlainString();
-
             case "balance_format" -> balance
                     .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP)
                     .toPlainString();
-
-            case "balance_format_symvol" -> config.economy.currencySymbol + balance
+            case "balance_format_symvol", "balance_format_symbol" -> config.economy.currencySymbol + balance
                     .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP)
                     .toPlainString();
-
             case "balance_short" -> abbreviate(balance);
-
-            case "balance_short_symvol" -> config.economy.currencySymbol + abbreviate(balance);
-
+            case "balance_short_symvol", "balance_short_symbol" -> config.economy.currencySymbol + abbreviate(balance);
             default -> null;
         };
     }
 
-    /**
-     * Сокращает число: 1000 → 1к, 1500 → 1.5к, 1000000 → 1М.
-     * Суффиксы берутся из языковых файлов (LangKey.ABBREV_K/M/B).
-     */
     private String abbreviate(BigDecimal value) {
         if (value == null) return "0";
-
         BigDecimal abs = value.abs();
         String suffix;
         BigDecimal divisor;

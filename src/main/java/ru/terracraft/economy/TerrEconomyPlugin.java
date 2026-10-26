@@ -35,24 +35,20 @@ public final class TerrEconomyPlugin extends JavaPlugin {
     private PendingPayManager pendingPayManager;
     private CommandRegistrar commandRegistrar;
 
+    private int autoSaveTaskId = -1;
+    private int pendingCleanupTaskId = -1;
+
     @Override
     public void onEnable() {
-        // 1. Конфиг и локализация — синхронно, они не зависят от БД.
         this.configLoader = new ConfigLoader(this);
         this.configLoader.load();
         this.pluginConfig = configLoader.get();
 
         this.langManager = new LangManager(this, pluginConfig);
 
-        // 2. Инициализация БД откладывается на 1 тик, чтобы MineSQL успел
-        //    завершить onEnable и зарегистрировать источники данных.
         getServer().getScheduler().runTaskLater(this, this::initializeEconomy, 1L);
     }
 
-    /**
-     * Вторая фаза инициализации: БД, кэш, сервис, Vault, команды, задачи.
-     * Вызывается через 1 тик после onEnable.
-     */
     private void initializeEconomy() {
         this.databaseProvider = new DatabaseProvider(this, pluginConfig);
         if (!databaseProvider.initialize()) {
@@ -83,14 +79,8 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
         this.commandRegistrar.register();
 
-        // Автосохранение
-        long interval = pluginConfig.economy.autoSaveInterval * 20L;
-        getServer().getScheduler().runTaskTimerAsynchronously(this,
-                () -> cache.flushAll(playerRepository), interval, interval);
-
-        // Очистка просроченных подтверждений (раз в минуту)
-        getServer().getScheduler().runTaskTimerAsynchronously(this,
-                pendingPayManager::cleanup, 1200L, 1200L);
+        scheduleAutoSave();
+        schedulePendingCleanup();
 
         new Metrics(this, 12345);
 
@@ -100,18 +90,43 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         getLogger().info("TerrEconomy включён.");
     }
 
+    private void scheduleAutoSave() {
+        long interval = Math.max(1L, pluginConfig.economy.autoSaveInterval) * 20L;
+        autoSaveTaskId = getServer().getScheduler()
+                .runTaskTimerAsynchronously(this, () -> {
+                    if (playerRepository == null || cache == null) return;
+                    playerRepository.flushAll(cache.snapshot());
+                }, interval, interval)
+                .getTaskId();
+    }
+
+    private void schedulePendingCleanup() {
+        pendingCleanupTaskId = getServer().getScheduler()
+                .runTaskTimerAsynchronously(this, pendingPayManager::cleanup, 1200L, 1200L)
+                .getTaskId();
+    }
+
     @Override
     public void onDisable() {
+        if (autoSaveTaskId != -1) {
+            getServer().getScheduler().cancelTask(autoSaveTaskId);
+        }
+        if (pendingCleanupTaskId != -1) {
+            getServer().getScheduler().cancelTask(pendingCleanupTaskId);
+        }
+
         if (commandRegistrar != null) {
             commandRegistrar.unregister();
         }
 
-        if (playerRepository != null) {
-            playerRepository.shutdown();
+        // 1) Сброс балансов до остановки executor'а.
+        if (cache != null && playerRepository != null) {
+            playerRepository.flushAll(cache.snapshot());
         }
 
-        if (cache != null && playerRepository != null) {
-            cache.flushAll(playerRepository);
+        // 2) Останов executor'а (дожидается очереди).
+        if (playerRepository != null) {
+            playerRepository.shutdown();
         }
 
         if (databaseProvider != null) {
@@ -120,10 +135,17 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         getLogger().info("TerrEconomy выключен.");
     }
 
+    /**
+     * Перезагрузка конфигурации. Важно: не пересоздаём компоненты, держащие
+     * ссылку на {@link PluginConfig}, — вместо этого обновляем поля в том же
+     * инстансе через {@link ConfigLoader#load()} (он мутирует {@code get()}).
+     */
     public void reloadPlugin() {
         configLoader.load();
-        this.pluginConfig = configLoader.get();
         langManager.reload();
+
+        // Пересоздаём только те компоненты, которые читают конфиг при вызове
+        // (notifier держит ссылку на config — пересоздаём, чтобы обновить).
         this.notifier = new NotificationManager(pluginConfig, langManager);
 
         if (commandRegistrar != null) {
@@ -131,6 +153,12 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         }
         this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
         this.commandRegistrar.register();
+
+        // Перезапуск автосейва с новым интервалом.
+        if (autoSaveTaskId != -1) {
+            getServer().getScheduler().cancelTask(autoSaveTaskId);
+            scheduleAutoSave();
+        }
 
         getLogger().info("Конфигурация перезагружена.");
     }

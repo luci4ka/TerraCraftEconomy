@@ -242,7 +242,7 @@ public class NotificationManager {
                         .color(NamedTextColor.AQUA)
                         .decoration(TextDecoration.BOLD, true)),
                 row(NamedTextColor.AQUA,
-                        Component.text("Player").color(NamedTextColor.GRAY),
+                        lang.msgNoPrefix(viewer, LangKey.NOTIFY_BALANCE_OTHER_LABEL).color(NamedTextColor.GRAY),
                         Component.text(targetName)
                                 .color(NamedTextColor.YELLOW)
                                 .hoverEvent(HoverEvent.showText(

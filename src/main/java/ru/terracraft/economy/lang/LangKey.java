@@ -11,6 +11,7 @@ public enum LangKey {
     GENERAL_SELF_ACTION("general.self-action"),
     GENERAL_RELOADED("general.reloaded"),
     GENERAL_PAYCONFIRM("general.payconfirm"),
+    GENERAL_PAYCONFIRM_REPLACED("general.payconfirm-replaced"),
     GENERAL_PAYCONFIRM_TIMEOUT("general.payconfirm-timeout"),
 
     BALANCE_SELF("balance.self"),
@@ -24,8 +25,10 @@ public enum LangKey {
     PAY_TAX_NOTICE("pay.tax-notice"),
     PAY_OFFLINE_QUEUED("pay.offline-queued"),
     PAY_OFFLINE_DELIVERED("pay.offline-delivered"),
+    NOTIFY_BALANCE_OTHER_LABEL("notify.balance.other-label"),
     PAY_OFFLINE_SUMMARY("pay.offline-summary"),
     PAY_INSUFFICIENT_FUNDS("pay.insufficient-funds"),
+    PAY_TARGET_MAX_BALANCE("pay.target-max-balance"),
 
     ECO_GIVE("eco.give"),
     ECO_TAKE("eco.take"),

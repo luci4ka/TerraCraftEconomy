@@ -5,6 +5,9 @@ import de.exlll.configlib.YamlConfigurationProperties;
 import de.exlll.configlib.YamlConfigurationStore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ru.terracraft.economy.config.PluginConfig;
@@ -13,24 +16,30 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 public class LangManager {
 
     private static final MiniMessage MM = MiniMessage.miniMessage();
 
     private final Plugin plugin;
-    private final String defaultLocale;
+    private final PluginConfig config;
 
-    private final Map<String, Map<String, String>> localeCache = new HashMap<>();
-    private final Map<String, String> prefixCache = new HashMap<>();
+    /** Пересчитывается в {@link #reload()} — не final, чтобы /eco reload подхватывал смену локали. */
+    private volatile String defaultLocale;
+
+    private final Map<String, Map<String, String>> localeCache = new ConcurrentHashMap<>();
+    private final Map<String, String> prefixCache = new ConcurrentHashMap<>();
 
     public LangManager(Plugin plugin, PluginConfig config) {
         this.plugin = plugin;
-        this.defaultLocale = config.lang.locale;
+        this.config = config;
         reload();
     }
 
     public void reload() {
+        this.defaultLocale = config.lang.locale;
         localeCache.clear();
         prefixCache.clear();
 
@@ -46,22 +55,29 @@ public class LangManager {
 
         if (!langFile.exists()) {
             langFile.getParentFile().mkdirs();
-            plugin.saveResource(fileName, false);
+            try {
+                plugin.saveResource(fileName, false);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Ресурс " + fileName + " отсутствует в jar: " + e.getMessage());
+                return;
+            }
         }
 
         YamlConfigurationProperties props = YamlConfigurationProperties.newBuilder().build();
         YamlConfigurationStore<LangFile> store =
                 new YamlConfigurationStore<>(LangFile.class, props);
 
-        LangFile langFileObj = store.load(langFile.toPath());
-
-        prefixCache.put(locale,
-                langFileObj.prefix != null
-                        ? langFileObj.prefix
-                        : "<dark_gray>[<gold>TerrEconomy<dark_gray>] <reset>");
-
-        Map<String, String> map = new HashMap<>(langFileObj.messages);
-        localeCache.put(locale, map);
+        try {
+            LangFile langFileObj = store.load(langFile.toPath());
+            prefixCache.put(locale, langFileObj.prefix != null
+                    ? langFileObj.prefix
+                    : "<dark_gray>[<gold>TerrEconomy<dark_gray>] <reset>");
+            localeCache.put(locale,
+                    langFileObj.messages != null ? new HashMap<>(langFileObj.messages) : Map.of());
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE,
+                    "Не удалось загрузить " + fileName + ": " + e.getMessage(), e);
+        }
     }
 
     private String resolveLocale(Player player) {
@@ -69,32 +85,40 @@ public class LangManager {
 
         Locale locale = player.locale();
         String code = locale.getLanguage() + "_" + locale.getCountry();
+        if (localeCache.containsKey(code)) return code;
 
-        if (localeCache.containsKey(code)) {
-            return code;
-        }
-        String langOnly = locale.getLanguage() + "_"
-                + locale.getLanguage().toUpperCase(Locale.ROOT);
-        if (localeCache.containsKey(langOnly)) {
-            return langOnly;
-        }
+        // Fallback по языку: en_GB → en_US, ru_UA → ru_RU и т.п.
+        String byLang = findLocaleByLanguage(locale.getLanguage());
+        if (byLang != null) return byLang;
+
         return defaultLocale;
     }
 
-    public String raw(Player player, LangKey key, Map<String, String> placeholders) {
-        String locale = resolveLocale(player);
-        Map<String, String> map = localeCache.getOrDefault(locale, Map.of());
-        String msg = map.getOrDefault(key.key(),
-                "<red>Missing lang key: " + key.key());
-        return applyPlaceholders(msg, placeholders);
+    private String findLocaleByLanguage(String lang) {
+        for (String key : localeCache.keySet()) {
+            if (key.startsWith(lang + "_")) return key;
+        }
+        return null;
     }
 
+    /**
+     * Возвращает шаблон строки без подстановки. Плейсхолдеры в YAML
+     * должны быть в формате {@code <key>} (как {@code <arg:0>} в гайде).
+     * Подстановка — в {@link #deserialize(String, Map)} через
+     * {@link Placeholder#unparsed(String, String)} — это экранирует
+     * пользовательский ввод и не даёт интерпретировать его как MiniMessage.
+     */
     public String raw(Player player, LangKey key) {
-        return raw(player, key, null);
+        return rawFor(resolveLocale(player), key);
+    }
+
+    private String rawFor(String locale, LangKey key) {
+        Map<String, String> map = localeCache.getOrDefault(locale, Map.of());
+        return map.getOrDefault(key.key(), "<red>Missing lang key: " + key.key());
     }
 
     public Component msgNoPrefix(Player player, LangKey key, Map<String, String> placeholders) {
-        return MM.deserialize(raw(player, key, placeholders));
+        return deserialize(rawFor(resolveLocale(player), key), placeholders);
     }
 
     public Component msgNoPrefix(Player player, LangKey key) {
@@ -104,7 +128,7 @@ public class LangManager {
     public Component msg(Player player, LangKey key, Map<String, String> placeholders) {
         String locale = resolveLocale(player);
         String prefix = prefixCache.getOrDefault(locale, "");
-        return MM.deserialize(prefix + raw(player, key, placeholders));
+        return deserialize(prefix + rawFor(locale, key), placeholders);
     }
 
     public Component msg(Player player, LangKey key) {
@@ -113,10 +137,7 @@ public class LangManager {
 
     public Component msg(LangKey key, Map<String, String> placeholders) {
         String prefix = prefixCache.getOrDefault(defaultLocale, "");
-        Map<String, String> map = localeCache.getOrDefault(defaultLocale, Map.of());
-        String msg = map.getOrDefault(key.key(),
-                "<red>Missing lang key: " + key.key());
-        return MM.deserialize(prefix + applyPlaceholders(msg, placeholders));
+        return deserialize(prefix + rawFor(defaultLocale, key), placeholders);
     }
 
     public Component msg(LangKey key) {
@@ -124,32 +145,44 @@ public class LangManager {
     }
 
     public Component msgNoPrefix(LangKey key, Map<String, String> placeholders) {
-        return MM.deserialize(rawRaw(defaultLocale, key, placeholders));
-    }
-
-    private String rawRaw(String locale, LangKey key, Map<String, String> placeholders) {
-        Map<String, String> map = localeCache.getOrDefault(locale, Map.of());
-        String msg = map.getOrDefault(key.key(),
-                "<red>Missing lang key: " + key.key());
-        return applyPlaceholders(msg, placeholders);
+        return deserialize(rawFor(defaultLocale, key), placeholders);
     }
 
     public String getPrefix() {
         return prefixCache.getOrDefault(defaultLocale, "");
     }
 
-    private String applyPlaceholders(String msg, Map<String, String> placeholders) {
-        if (placeholders == null || placeholders.isEmpty()) return msg;
-        for (Map.Entry<String, String> e : placeholders.entrySet()) {
-            msg = msg.replace("{" + e.getKey() + "}", e.getValue());
-        }
-        return msg;
-    }
-
     /** Чистая строка суффикса сокращения (без MiniMessage). */
     public String abbrevSuffix(LangKey key) {
         Map<String, String> map = localeCache.getOrDefault(defaultLocale, Map.of());
         return map.getOrDefault(key.key(), key.key());
+    }
+
+    /**
+     * Десериализация MiniMessage с плейсхолдерами через {@link Placeholder#unparsed}:
+     * значения не парсятся как разметка (защита от инъекции тегов в никах и т.п.).
+     * При ошибке разметки — fallback на plain text (теги стрипаются).
+     */
+    private Component deserialize(String template, Map<String, String> placeholders) {
+        try {
+            if (placeholders == null || placeholders.isEmpty()) {
+                return MM.deserialize(template);
+            }
+            TagResolver.Builder builder = TagResolver.builder();
+            for (var e : placeholders.entrySet()) {
+                builder.resolver(Placeholder.unparsed(e.getKey(), e.getValue()));
+            }
+            return MM.deserialize(template, builder.build());
+        } catch (Exception e) {
+            plugin.getLogger().warning("Ошибка MiniMessage: " + e.getMessage()
+                    + " в строке: " + template);
+            try {
+                return Component.text(MM.stripTags(template));
+            } catch (Exception ignored) {
+                return Component.text(PlainTextComponentSerializer.plainText()
+                        .serialize(Component.text(template)));
+            }
+        }
     }
 
     @Configuration

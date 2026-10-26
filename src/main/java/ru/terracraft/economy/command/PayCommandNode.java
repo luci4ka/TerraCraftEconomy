@@ -4,8 +4,6 @@ import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.ArgumentSuggestions;
 import dev.jorel.commandapi.arguments.DoubleArgument;
 import dev.jorel.commandapi.arguments.StringArgument;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -16,6 +14,7 @@ import ru.terracraft.economy.lang.LangKey;
 import ru.terracraft.economy.lang.LangManager;
 import ru.terracraft.economy.util.NotificationManager;
 import ru.terracraft.economy.util.PendingPayConfirm;
+import ru.terracraft.economy.util.PlayerResolver;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -53,15 +52,35 @@ public class PayCommandNode {
                     BigDecimal amount = BigDecimal.valueOf(rawAmount)
                             .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
 
-                    // Проверка порога подтверждения
+                    if (amount.signum() == 0) {
+                        player.sendMessage(lang.msg(player, LangKey.GENERAL_INVALID_AMOUNT));
+                        return;
+                    }
+                    if (amount.signum() < 0) {
+                        player.sendMessage(lang.msg(player, LangKey.GENERAL_NEGATIVE_AMOUNT));
+                        return;
+                    }
+
                     if (config.pay.confirmThreshold.signum() > 0
                             && amount.compareTo(config.pay.confirmThreshold) >= 0) {
-                        plugin.getPendingPayManager().create(player.getUniqueId(), targetName, amount);
-                        player.sendMessage(lang.msg(player, LangKey.GENERAL_PAYCONFIRM, Map.of(
-                                "target", targetName,
-                                "amount", amount.toPlainString(),
-                                "symbol", config.economy.currencySymbol
-                        )));
+                        PendingPayConfirm previous = plugin.getPendingPayManager()
+                                .createAndReturnPrevious(player.getUniqueId(), targetName, amount);
+
+                        if (previous != null && previous.getAmount().compareTo(amount) != 0) {
+                            player.sendMessage(lang.msg(player, LangKey.GENERAL_PAYCONFIRM_REPLACED, Map.of(
+                                    "old_target", previous.getTargetName(),
+                                    "old_amount", previous.getAmount().toPlainString(),
+                                    "target", targetName,
+                                    "amount", amount.toPlainString(),
+                                    "symbol", config.economy.currencySymbol
+                            )));
+                        } else {
+                            player.sendMessage(lang.msg(player, LangKey.GENERAL_PAYCONFIRM, Map.of(
+                                    "target", targetName,
+                                    "amount", amount.toPlainString(),
+                                    "symbol", config.economy.currencySymbol
+                            )));
+                        }
                         return;
                     }
 
@@ -82,26 +101,31 @@ public class PayCommandNode {
     }
 
     private void executePayment(Player sender, String targetName, BigDecimal amount) {
-        if (sender.getName().equalsIgnoreCase(targetName)) {
+        if (amount.signum() <= 0) {
+            sender.sendMessage(lang.msg(sender, amount.signum() == 0
+                    ? LangKey.GENERAL_INVALID_AMOUNT
+                    : LangKey.GENERAL_NEGATIVE_AMOUNT));
+            return;
+        }
+
+        OfflinePlayer target = PlayerResolver.resolve(targetName);
+        if (target == null) {
+            sender.sendMessage(lang.msg(sender, LangKey.GENERAL_PLAYER_NEVER_JOINED,
+                    Map.of("target", targetName)));
+            return;
+        }
+
+        if (target.getUniqueId().equals(sender.getUniqueId())) {
             sender.sendMessage(lang.msg(sender, LangKey.GENERAL_SELF_ACTION));
             return;
         }
 
-        Player onlineTarget = Bukkit.getPlayerExact(targetName);
-        OfflinePlayer offlineTarget = null;
+        Player onlineTarget = target.isOnline() ? (Player) target : null;
 
-        if (onlineTarget == null) {
-            if (!config.pay.allowOffline) {
-                sender.sendMessage(lang.msg(sender, LangKey.GENERAL_PLAYER_NOT_FOUND,
-                        Map.of("target", targetName)));
-                return;
-            }
-            offlineTarget = Bukkit.getOfflinePlayerIfCached(targetName);
-            if (offlineTarget == null) {
-                sender.sendMessage(lang.msg(sender, LangKey.GENERAL_PLAYER_NEVER_JOINED,
-                        Map.of("target", targetName)));
-                return;
-            }
+        if (onlineTarget == null && !config.pay.allowOffline) {
+            sender.sendMessage(lang.msg(sender, LangKey.GENERAL_PLAYER_NOT_FOUND,
+                    Map.of("target", targetName)));
+            return;
         }
 
         BigDecimal senderBalance = economyService.getBalance(sender.getUniqueId());
@@ -115,32 +139,56 @@ public class PayCommandNode {
         BigDecimal netAmount = amount.subtract(tax)
                 .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
 
-        String targetDisplayName = onlineTarget != null
-                ? onlineTarget.getName()
-                : offlineTarget.getName();
+        String targetDisplayName = target.getName() != null ? target.getName() : targetName;
+
+        // Проверка maxBalance получателя (важно и для онлайн, и для офлайн —
+        // иначе деньги «сгорят» при deposit/overflow).
+        BigDecimal targetBalance = economyService.getBalance(target.getUniqueId());
+        BigDecimal maxBalance = config.economy.maxBalance;
+        if (targetBalance.add(netAmount).compareTo(maxBalance) > 0) {
+            sender.sendMessage(lang.msg(sender, LangKey.PAY_TARGET_MAX_BALANCE, Map.of(
+                    "target", targetDisplayName,
+                    "max", maxBalance.toPlainString(),
+                    "symbol", config.economy.currencySymbol
+            )));
+            return;
+        }
 
         if (onlineTarget != null) {
-            boolean success = economyService.transferWithTax(
+            var outcome = economyService.transferWithTaxDetailed(
                     sender.getUniqueId(), onlineTarget.getUniqueId(), amount, tax);
 
-            if (!success) {
-                sender.sendMessage(lang.msg(sender, LangKey.PAY_INSUFFICIENT_FUNDS,
-                        Map.of("balance", senderBalance.toPlainString())));
-                return;
+            switch (outcome) {
+                case SUCCESS -> {
+                    notifier.paymentSent(sender, targetDisplayName, amount, tax, netAmount);
+                    notifier.paymentReceived(onlineTarget, sender.getName(), amount, tax, netAmount);
+                }
+                case INSUFFICIENT -> {
+                    BigDecimal current = economyService.getBalance(sender.getUniqueId());
+                    sender.sendMessage(lang.msg(sender, LangKey.PAY_INSUFFICIENT_FUNDS,
+                            Map.of("balance", current.toPlainString())));
+                }
+                case TARGET_OVERFLOW -> {
+                    BigDecimal currentTarget = economyService.getBalance(onlineTarget.getUniqueId());
+                    sender.sendMessage(lang.msg(sender, LangKey.PAY_TARGET_MAX_BALANCE, Map.of(
+                            "target", targetDisplayName,
+                            "max", currentTarget.toPlainString(),
+                            "symbol", config.economy.currencySymbol
+                    )));
+                }
+                case SAME_ACCOUNT -> sender.sendMessage(lang.msg(sender, LangKey.GENERAL_SELF_ACTION));
             }
-
-            notifier.paymentSent(sender, targetDisplayName, amount, tax, netAmount);
-            notifier.paymentReceived(onlineTarget, sender.getName(), amount, tax, netAmount);
         } else {
             BigDecimal newSenderBalance = economyService.withdraw(sender.getUniqueId(), amount);
             if (newSenderBalance == null) {
+                BigDecimal current = economyService.getBalance(sender.getUniqueId());
                 sender.sendMessage(lang.msg(sender, LangKey.PAY_INSUFFICIENT_FUNDS,
-                        Map.of("balance", senderBalance.toPlainString())));
+                        Map.of("balance", current.toPlainString())));
                 return;
             }
 
             economyService.queueOfflinePayment(
-                    offlineTarget.getUniqueId(), sender.getUniqueId(), netAmount);
+                    target.getUniqueId(), sender.getUniqueId(), netAmount);
 
             notifier.paymentQueued(sender, targetDisplayName, amount, tax, netAmount);
         }

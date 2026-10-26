@@ -27,14 +27,10 @@ public class TerrEconomyProvider implements Economy {
 
     @Override public boolean isEnabled() { return plugin.isEnabled(); }
     @Override public String getName() { return "TerrEconomy"; }
+    @Override public boolean hasBankSupport() { return false; }
 
     @Override
-    public boolean hasBankSupport() { return false; }
-
-    @Override
-    public int fractionalDigits() {
-        return config.economy.fractionalDigits;
-    }
+    public int fractionalDigits() { return config.economy.fractionalDigits; }
 
     @Override
     public String format(double amount) {
@@ -43,26 +39,12 @@ public class TerrEconomyProvider implements Economy {
                 .toPlainString();
     }
 
-    @Override
-    public String currencyNamePlural() {
-        return config.economy.currencyNamePlural;
-    }
-
-    @Override
-    public String currencyNameSingular() {
-        return config.economy.currencyNameSingular;
-    }
+    @Override public String currencyNamePlural() { return config.economy.currencyNamePlural; }
+    @Override public String currencyNameSingular() { return config.economy.currencyNameSingular; }
 
     // ============ UUID-методы ============
-    @Override
-    public boolean hasAccount(UUID uuid) {
-        return uuid != null && service.hasAccount(uuid);
-    }
-
-    @Override
-    public boolean hasAccount(UUID uuid, String worldName) {
-        return hasAccount(uuid);
-    }
+    @Override public boolean hasAccount(UUID uuid) { return uuid != null && service.hasAccount(uuid); }
+    @Override public boolean hasAccount(UUID uuid, String worldName) { return hasAccount(uuid); }
 
     @Override
     public boolean createPlayerAccount(UUID uuid) {
@@ -72,88 +54,70 @@ public class TerrEconomyProvider implements Economy {
         return true;
     }
 
-    @Override
-    public boolean createPlayerAccount(UUID uuid, String worldName) {
-        return createPlayerAccount(uuid);
-    }
+    @Override public boolean createPlayerAccount(UUID uuid, String worldName) { return createPlayerAccount(uuid); }
 
     @Override
     public double getBalance(UUID uuid) {
         return uuid == null ? 0.0 : service.getBalance(uuid).doubleValue();
     }
 
-    @Override
-    public double getBalance(UUID uuid, String worldName) {
-        return getBalance(uuid);
-    }
-
-    @Override
-    public boolean has(UUID uuid, double amount) {
+    @Override public double getBalance(UUID uuid, String worldName) { return getBalance(uuid); }
+    @Override public boolean has(UUID uuid, double amount) {
         return uuid != null && service.getBalance(uuid).doubleValue() >= amount;
     }
-
-    @Override
-    public boolean has(UUID uuid, String worldName, double amount) {
-        return has(uuid, amount);
-    }
+    @Override public boolean has(UUID uuid, String worldName, double amount) { return has(uuid, amount); }
 
     @Override
     public EconomyResponse withdrawPlayer(UUID uuid, double amount) {
-        if (uuid == null) return fail("Игрок не найден");
-        if (amount < 0) return fail("Сумма не может быть отрицательной");
+        if (uuid == null) return fail("Player not found");
+        if (amount < 0) return fail("Amount cannot be negative");
+        if (amount == 0.0) {
+            return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
+                    EconomyResponse.ResponseType.SUCCESS, null);
+        }
 
         var newBalance = service.withdraw(uuid, BigDecimal.valueOf(amount));
         if (newBalance == null) {
             return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
-                    EconomyResponse.ResponseType.FAILURE, "Недостаточно средств");
+                    EconomyResponse.ResponseType.FAILURE, "Insufficient funds");
         }
         return new EconomyResponse(amount, newBalance.doubleValue(),
                 EconomyResponse.ResponseType.SUCCESS, null);
     }
 
-    @Override
-    public EconomyResponse withdrawPlayer(UUID uuid, String worldName, double amount) {
+    @Override public EconomyResponse withdrawPlayer(UUID uuid, String worldName, double amount) {
         return withdrawPlayer(uuid, amount);
     }
 
     @Override
     public EconomyResponse depositPlayer(UUID uuid, double amount) {
-        if (uuid == null) return fail("Игрок не найден");
-        if (amount < 0) return fail("Сумма не может быть отрицательной");
-
-        var result = service.depositAndReport(uuid, BigDecimal.valueOf(amount));
-
-        if (result.overflow().signum() > 0) {
-            // Часть суммы не поместилась в maxBalance. Возвращаем FAILURE,
-            // чтобы Vault-потребитель не считал операцию полностью успешной.
-            // balance в ответе — фактический новый баланс.
-            return new EconomyResponse(amount, result.newBalance().doubleValue(),
-                    EconomyResponse.ResponseType.FAILURE,
-                    "Превышен максимальный баланс: зачислено "
-                            + result.credited().toPlainString()
-                            + ", не поместилось "
-                            + result.overflow().toPlainString());
+        if (uuid == null) return fail("Player not found");
+        if (amount < 0) return fail("Amount cannot be negative");
+        if (amount == 0.0) {
+            return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
+                    EconomyResponse.ResponseType.SUCCESS, null);
         }
 
+        var result = service.depositAndReport(uuid, BigDecimal.valueOf(amount));
+        if (result.overflow().signum() > 0) {
+            return new EconomyResponse(amount, result.newBalance().doubleValue(),
+                    EconomyResponse.ResponseType.FAILURE,
+                    "Max balance exceeded: credited " + result.credited().toPlainString()
+                            + ", overflow " + result.overflow().toPlainString());
+        }
         return new EconomyResponse(amount, result.newBalance().doubleValue(),
                 EconomyResponse.ResponseType.SUCCESS, null);
     }
 
-    @Override
-    public EconomyResponse depositPlayer(UUID uuid, String worldName, double amount) {
+    @Override public EconomyResponse depositPlayer(UUID uuid, String worldName, double amount) {
         return depositPlayer(uuid, amount);
     }
 
     // ============ OfflinePlayer-методы ============
-    @Override
-    public boolean hasAccount(OfflinePlayer player) {
+    @Override public boolean hasAccount(OfflinePlayer player) {
         return player != null && service.hasAccount(player.getUniqueId());
     }
-
-    @Override
-    public boolean hasAccount(OfflinePlayer player, String worldName) {
-        return hasAccount(player);
-    }
+    @Override public boolean hasAccount(OfflinePlayer player, String worldName) { return hasAccount(player); }
 
     @Override
     public boolean createPlayerAccount(OfflinePlayer player) {
@@ -161,123 +125,58 @@ public class TerrEconomyProvider implements Economy {
         service.createAccount(player.getUniqueId(), player.getName());
         return true;
     }
-
-    @Override
-    public boolean createPlayerAccount(OfflinePlayer player, String worldName) {
-        return createPlayerAccount(player);
-    }
-
-    @Override
-    public double getBalance(OfflinePlayer player) {
+    @Override public boolean createPlayerAccount(OfflinePlayer player, String worldName) { return createPlayerAccount(player); }
+    @Override public double getBalance(OfflinePlayer player) {
         return player == null ? 0.0 : service.getBalance(player.getUniqueId()).doubleValue();
     }
-
-    @Override
-    public double getBalance(OfflinePlayer player, String worldName) {
-        return getBalance(player);
-    }
-
-    @Override
-    public boolean has(OfflinePlayer player, double amount) {
+    @Override public double getBalance(OfflinePlayer player, String worldName) { return getBalance(player); }
+    @Override public boolean has(OfflinePlayer player, double amount) {
         return player != null && service.getBalance(player.getUniqueId()).doubleValue() >= amount;
     }
-
-    @Override
-    public boolean has(OfflinePlayer player, String worldName, double amount) {
-        return has(player, amount);
-    }
-
-    @Override
-    public EconomyResponse withdrawPlayer(OfflinePlayer player, double amount) {
-        if (player == null) return fail("Игрок не найден");
+    @Override public boolean has(OfflinePlayer player, String worldName, double amount) { return has(player, amount); }
+    @Override public EconomyResponse withdrawPlayer(OfflinePlayer player, double amount) {
+        if (player == null) return fail("Player not found");
         return withdrawPlayer(player.getUniqueId(), amount);
     }
-
-    @Override
-    public EconomyResponse withdrawPlayer(OfflinePlayer player, String worldName, double amount) {
-        return withdrawPlayer(player, amount);
-    }
-
-    @Override
-    public EconomyResponse depositPlayer(OfflinePlayer player, double amount) {
-        if (player == null) return fail("Игрок не найден");
+    @Override public EconomyResponse withdrawPlayer(OfflinePlayer player, String worldName, double amount) { return withdrawPlayer(player, amount); }
+    @Override public EconomyResponse depositPlayer(OfflinePlayer player, double amount) {
+        if (player == null) return fail("Player not found");
         return depositPlayer(player.getUniqueId(), amount);
     }
-
-    @Override
-    public EconomyResponse depositPlayer(OfflinePlayer player, String worldName, double amount) {
-        return depositPlayer(player, amount);
-    }
+    @Override public EconomyResponse depositPlayer(OfflinePlayer player, String worldName, double amount) { return depositPlayer(player, amount); }
 
     // ============ String-методы ============
-    @Override
-    public boolean hasAccount(String playerName) {
+    @Override public boolean hasAccount(String playerName) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p != null && hasAccount(p);
     }
-
-    @Override
-    public boolean hasAccount(String playerName, String worldName) {
-        return hasAccount(playerName);
-    }
-
-    @Override
-    public boolean createPlayerAccount(String playerName) {
+    @Override public boolean hasAccount(String playerName, String worldName) { return hasAccount(playerName); }
+    @Override public boolean createPlayerAccount(String playerName) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p != null && createPlayerAccount(p);
     }
-
-    @Override
-    public boolean createPlayerAccount(String playerName, String worldName) {
-        return createPlayerAccount(playerName);
-    }
-
-    @Override
-    public double getBalance(String playerName) {
+    @Override public boolean createPlayerAccount(String playerName, String worldName) { return createPlayerAccount(playerName); }
+    @Override public double getBalance(String playerName) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
         return p == null ? 0.0 : getBalance(p);
     }
-
-    @Override
-    public double getBalance(String playerName, String worldName) {
-        return getBalance(playerName);
-    }
-
-    @Override
-    public boolean has(String playerName, double amount) {
-        return getBalance(playerName) >= amount;
-    }
-
-    @Override
-    public boolean has(String playerName, String worldName, double amount) {
-        return has(playerName, amount);
-    }
-
-    @Override
-    public EconomyResponse withdrawPlayer(String playerName, double amount) {
+    @Override public double getBalance(String playerName, String worldName) { return getBalance(playerName); }
+    @Override public boolean has(String playerName, double amount) { return getBalance(playerName) >= amount; }
+    @Override public boolean has(String playerName, String worldName, double amount) { return has(playerName, amount); }
+    @Override public EconomyResponse withdrawPlayer(String playerName, double amount) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
-        if (p == null) return fail("Игрок не найден");
+        if (p == null) return fail("Player not found");
         return withdrawPlayer(p, amount);
     }
-
-    @Override
-    public EconomyResponse withdrawPlayer(String playerName, String worldName, double amount) {
-        return withdrawPlayer(playerName, amount);
-    }
-
-    @Override
-    public EconomyResponse depositPlayer(String playerName, double amount) {
+    @Override public EconomyResponse withdrawPlayer(String playerName, String worldName, double amount) { return withdrawPlayer(playerName, amount); }
+    @Override public EconomyResponse depositPlayer(String playerName, double amount) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
-        if (p == null) return fail("Игрок не найден");
+        if (p == null) return fail("Player not found");
         return depositPlayer(p, amount);
     }
+    @Override public EconomyResponse depositPlayer(String playerName, String worldName, double amount) { return depositPlayer(playerName, amount); }
 
-    @Override
-    public EconomyResponse depositPlayer(String playerName, String worldName, double amount) {
-        return depositPlayer(playerName, amount);
-    }
-
-    // ============ Банки (не поддерживаются) ============
+    // ============ Банки ============
     @Override public EconomyResponse createBank(String name, OfflinePlayer player) { return notImpl(); }
     @Override public EconomyResponse createBank(String name, UUID uuid) { return notImpl(); }
     @Override public EconomyResponse createBank(String name, String playerName) { return notImpl(); }
@@ -294,12 +193,10 @@ public class TerrEconomyProvider implements Economy {
     @Override public EconomyResponse isBankMember(String name, String playerName) { return notImpl(); }
     @Override public List<String> getBanks() { return List.of(); }
 
-    // ============ Вспомогательные ============
     private EconomyResponse fail(String msg) {
         return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, msg);
     }
-
     private EconomyResponse notImpl() {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "Банки не поддерживаются");
+        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "Banks are not supported");
     }
 }

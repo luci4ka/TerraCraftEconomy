@@ -10,9 +10,12 @@ import java.util.List;
 
 public class CommandRegistrar {
 
-    /** Имена всех команд, которые регистрирует этот класс (включая подкоманды /eco). */
+    /**
+     * Только основные имена (алиасы снимаются вместе с командой).
+     * Без force — не снимаем чужие команды с теми же именами.
+     */
     private static final List<String> COMMANDS = List.of(
-            "balance", "bal", "money",
+            "balance",
             "pay", "payconfirm",
             "eco"
     );
@@ -37,17 +40,11 @@ public class CommandRegistrar {
         new TerrEcoAdminCommandNode(plugin, economyService, langManager).register();
     }
 
-    /**
-     * Снимает все команды, зарегистрированные этим классом.
-     * CommandAPI.unregister() бросает исключение, если команда не найдена,
-     * поэтому оборачиваем в try/catch и логируем на debug-уровне.
-     */
     public void unregister() {
         for (String name : COMMANDS) {
             try {
-                CommandAPI.unregister(name, true);
+                CommandAPI.unregister(name);
             } catch (Exception e) {
-                // Команда могла быть не зарегистрирована — это не ошибка.
                 plugin.getLogger().fine("unregister(" + name + "): " + e.getMessage());
             }
         }

@@ -16,11 +16,14 @@ public class PendingPayManager {
         this.config = config;
     }
 
-    public void create(UUID sender, String targetName, BigDecimal amount) {
-        pending.put(sender, new PendingPayConfirm(sender, targetName, amount, config.pay.confirmTimeout));
+    /** Создаёт новый pending, возвращает предыдущий (или null, если не было/просрочен). */
+    public PendingPayConfirm createAndReturnPrevious(UUID sender, String targetName, BigDecimal amount) {
+        PendingPayConfirm prev = pending.put(sender,
+                new PendingPayConfirm(sender, targetName, amount, config.pay.confirmTimeout));
+        if (prev == null || prev.isExpired()) return null;
+        return prev;
     }
 
-    /** Забирает ожидание (удаляет из карты). Возвращает null, если нет или просрочено. */
     public PendingPayConfirm consume(UUID sender) {
         PendingPayConfirm p = pending.remove(sender);
         if (p == null || p.isExpired()) return null;

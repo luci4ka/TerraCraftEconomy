@@ -1,16 +1,11 @@
 package ru.terracraft.economy.util;
 
 import com.github.ezplugins.updater.UpdateChecker;
-import com.github.ezplugins.updater.UpdateResult;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.terracraft.economy.config.PluginConfig;
 
 import java.util.logging.Logger;
 
-/**
- * Проверка обновлений плагина через GitHub Releases.
- * Включается/выключается через config.updates.check.
- */
 public class UpdateNotifier {
 
     private static final String GITHUB_OWNER = "luci4ka";
@@ -26,9 +21,6 @@ public class UpdateNotifier {
         this.logger = plugin.getLogger();
     }
 
-    /**
-     * Запускает проверку обновлений асинхронно через API библиотеки.
-     */
     public void checkAsync() {
         if (!config.updates.check) {
             logger.info("Проверка обновлений отключена в конфиге.");
@@ -41,11 +33,12 @@ public class UpdateNotifier {
                 .builder(GITHUB_OWNER, GITHUB_REPO, currentVersion)
                 .build();
 
-        // Используем асинхронный метод самой библиотеки
         checker.checkNowAsync().thenAccept(result -> {
             if (result.hasError()) {
-                logger.warning("Не удалось проверить обновления: "
-                        + result.getError().orElseThrow().getMessage());
+                String msg = result.getError()
+                        .map(Throwable::getMessage)
+                        .orElse("неизвестная ошибка");
+                logger.warning("Не удалось проверить обновления: " + msg);
                 return;
             }
 
@@ -63,6 +56,9 @@ public class UpdateNotifier {
             } else {
                 logger.info("TerrEconomy обновлён до последней версии (" + currentVersion + ").");
             }
+        }).exceptionally(ex -> {
+            logger.warning("Не удалось проверить обновления: " + ex.getMessage());
+            return null;
         });
     }
 }

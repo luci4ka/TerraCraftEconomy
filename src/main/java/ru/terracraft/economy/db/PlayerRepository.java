@@ -38,9 +38,6 @@ public class PlayerRepository {
                     t.setDaemon(true);
                     return t;
                 },
-                // AbortPolicy: не блокируем вызывающий поток (может быть main).
-                // Отказ логируется через afterExecute; критичные операции
-                // (flushAll) идут напрямую, не через executor.
                 new ThreadPoolExecutor.AbortPolicy()
         ) {
             @Override
@@ -103,11 +100,17 @@ public class PlayerRepository {
         }
     }
 
+    /**
+     * MariaDB-совместимый upsert.
+     * <p>{@code VALUES(col)} — устаревший синтаксис в MySQL 8.0.20+, но
+     * <b>рабочий</b> и в MariaDB, и в MySQL. Синтаксис {@code AS new ...
+     * new.col} — только MySQL 8.0.19+, MariaDB его <b>не понимает</b>
+     * (ошибка 1064). Поэтому используем {@code VALUES()}.
+     */
     public void updateBalance(UUID uuid, BigDecimal balance) {
-        // updated_at обновляется всегда, даже если balance не изменился:
-        // cleanup опирается на updated_at как на «активность».
-        String sql = "INSERT INTO players (uuid, balance, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) AS new " +
-                "ON DUPLICATE KEY UPDATE balance = new.balance, updated_at = CURRENT_TIMESTAMP";
+        String sql = "INSERT INTO players (uuid, balance, updated_at) " +
+                "VALUES (?, ?, CURRENT_TIMESTAMP) " +
+                "ON DUPLICATE KEY UPDATE balance = VALUES(balance), updated_at = CURRENT_TIMESTAMP";
         try (Connection c = db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -147,12 +150,11 @@ public class PlayerRepository {
     }
 
     private void upsertChunk(Connection c, List<Map.Entry<UUID, BigDecimal>> chunk) throws SQLException {
-        var sb = new StringBuilder(
-                "INSERT INTO players (uuid, balance, updated_at) VALUES ");
+        var sb = new StringBuilder("INSERT INTO players (uuid, balance, updated_at) VALUES ");
         for (int i = 0; i < chunk.size(); i++) {
             sb.append(i == 0 ? "(?, ?, CURRENT_TIMESTAMP)" : ", (?, ?, CURRENT_TIMESTAMP)");
         }
-        sb.append(" AS new ON DUPLICATE KEY UPDATE balance = new.balance, updated_at = CURRENT_TIMESTAMP");
+        sb.append(" ON DUPLICATE KEY UPDATE balance = VALUES(balance), updated_at = CURRENT_TIMESTAMP");
 
         try (PreparedStatement ps = c.prepareStatement(sb.toString())) {
             int idx = 1;
@@ -202,10 +204,6 @@ public class PlayerRepository {
         try {
             executor.execute(task);
         } catch (java.util.concurrent.RejectedExecutionException ex) {
-            // Очередь переполнена или executor остановлен.
-            // Для updateBalance/create — пробуем выполнить синхронно,
-            // чтобы не потерять запись. Вызывающий поток лучше замедлить,
-            // чем молча потерять данные. Но чтобы не убить TPS, ограничим:
             plugin.getLogger().warning("economy-db очередь переполнена, задача выполнена в вызывающем потоке.");
             task.run();
         }
@@ -324,12 +322,9 @@ public class PlayerRepository {
     /**
      * Идемпотентная доставка: удаляет записи пачки одним DELETE.
      * Возвращает фактически удалённые id — только они должны быть зачислены.
-     * Если между SELECT и DELETE запись уже удалена другим инстансом — она
-     * не попадёт в результат, значит зачислять её не нужно.
      */
     public List<Long> deletePendingPaymentsAndReturn(List<Long> ids) {
         if (ids.isEmpty()) return List.of();
-        // SELECT ... FOR UPDATE + DELETE в одной транзакции.
         try (Connection c = db.getConnection()) {
             boolean oldAutoCommit = c.getAutoCommit();
             c.setAutoCommit(false);

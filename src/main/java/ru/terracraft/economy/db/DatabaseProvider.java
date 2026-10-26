@@ -14,9 +14,8 @@ import java.sql.Statement;
 public class DatabaseProvider {
 
     /**
-     * Точность хранения в БД фиксирована и заведомо больше любого
-     * разумного fractionalDigits (0..8). В кэше/сервисе — своё scale,
-     * БД хранит «как есть», чтобы reload конфига не терял точность.
+     * Точность хранения в БД — заведомо больше любого разумного
+     * fractionalDigits (0..8). В кэше/сервисе — своё scale.
      */
     private static final int DB_SCALE = 8;
 
@@ -101,10 +100,7 @@ public class DatabaseProvider {
 
     /**
      * Идемпотентно расширяет DECIMAL-колонки до {@link #DB_SCALE}.
-     * Нужно для апгрейда со старых версий, где было DECIMAL(20,2):
-     * {@code CREATE TABLE IF NOT EXISTS} не меняет тип существующей таблицы,
-     * поэтому без ALTER более точные значения (fractionalDigits > 2)
-     * молча округлялись бы при записи.
+     * Нужно для апгрейда со старых версий, где было DECIMAL(20,2).
      */
     private void migrateColumnScale(Connection c) {
         migrateColumn(c, "players", "balance");
@@ -115,13 +111,8 @@ public class DatabaseProvider {
     private void migrateColumn(Connection c, String table, String column) {
         try {
             Integer currentScale = readNumericScale(c, table, column);
-            if (currentScale == null) {
-                // Колонки нет — нечего мигрировать (или таблица ещё не создана).
-                return;
-            }
-            if (currentScale >= DB_SCALE) {
-                return;
-            }
+            if (currentScale == null) return;
+            if (currentScale >= DB_SCALE) return;
 
             String alterSql = "ALTER TABLE " + table + " MODIFY " + column
                     + " DECIMAL(20," + DB_SCALE + ") NOT NULL DEFAULT 0";
@@ -132,8 +123,6 @@ public class DatabaseProvider {
                                 .formatted(table, column, currentScale, DB_SCALE));
             }
         } catch (SQLException e) {
-            // ALTER может упасть из-за блокировки или нехватки прав —
-            // не фатально, попробуем при следующем старте.
             plugin.getLogger().warning("Не удалось мигрировать %s.%s: %s"
                     .formatted(table, column, e.getMessage()));
         }
@@ -212,6 +201,14 @@ public class DatabaseProvider {
         }
     }
 
+    /**
+     * MineSQL выдаёт pooled-соединение из BeeCP; {@code Connection#close()}
+     * возвращает его в пул. {@code try-with-resources} достаточно —
+     * явный {@code releaseConnection} не требуется.
+     * Если пул начнёт «залипать» (одинаковый {@code conn=NNNNN} в логах
+     * ошибок), проверь версию MineSQL: в 1.4.2 некоторые пути
+     * {@code SQLManager#getConnection()} могут не возвращать connection.
+     */
     public Connection getConnection() throws SQLException {
         if (sqlManager == null) {
             throw new SQLException("MineSQL не инициализирован.");

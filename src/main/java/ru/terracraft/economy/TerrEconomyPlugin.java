@@ -21,6 +21,9 @@ import ru.terracraft.economy.util.UpdateNotifier;
 
 public final class TerrEconomyPlugin extends JavaPlugin {
 
+    /** Реальный id с bstats.org (замените на свой после регистрации). */
+    private static final int BSTATS_ID = 12345;
+
     private ConfigLoader configLoader;
     private PluginConfig pluginConfig;
 
@@ -37,19 +40,22 @@ public final class TerrEconomyPlugin extends JavaPlugin {
 
     private int autoSaveTaskId = -1;
     private int pendingCleanupTaskId = -1;
+    private boolean economyRegistered = false;
 
+    // ------------------------------------------------------------------
+    // LOAD — регистрируем сервис Economy ДО onEnable любых других плагинов
+    // ------------------------------------------------------------------
     @Override
-    public void onEnable() {
+    public void onLoad() {
         this.configLoader = new ConfigLoader(this);
         this.configLoader.load();
         this.pluginConfig = configLoader.get();
 
         this.langManager = new LangManager(this, pluginConfig);
 
-        getServer().getScheduler().runTaskLater(this, this::initializeEconomy, 1L);
-    }
-
-    private void initializeEconomy() {
+        // БД и репозиторий нужны, чтобы Economy-провайдер был рабочим
+        // сразу после регистрации (зависимые плагины могут вызвать
+        // getBalance() до нашего onEnable).
         this.databaseProvider = new DatabaseProvider(this, pluginConfig);
         if (!databaseProvider.initialize()) {
             getLogger().severe("Не удалось инициализировать БД. Отключаю плагин.");
@@ -60,6 +66,29 @@ public final class TerrEconomyPlugin extends JavaPlugin {
 
         this.cache = new EconomyCache(pluginConfig);
         this.economyService = new EconomyService(cache, playerRepository, pluginConfig);
+        this.economyProvider = new TerrEconomyProvider(this, economyService, pluginConfig);
+
+        // Главное исправление: регистрация Economy в onLoad, а не в onEnable.
+        getServer().getServicesManager().register(
+                Economy.class,
+                economyProvider,
+                this,
+                ServicePriority.High);
+        this.economyRegistered = true;
+
+        getLogger().info("Economy-сервис зарегистрирован (onLoad).");
+    }
+
+    // ------------------------------------------------------------------
+    // ENABLE — команды, листенеры, PAPI, задачи, метрики, updater
+    // ------------------------------------------------------------------
+    @Override
+    public void onEnable() {
+        if (!economyRegistered) {
+            getLogger().severe("Economy-сервис не зарегистрирован — выключаю плагин.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
 
         if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             new TerrEconomyExpansion(this, economyService, pluginConfig, langManager).register();
@@ -68,12 +97,9 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         this.notifier = new NotificationManager(pluginConfig, langManager);
         this.pendingPayManager = new PendingPayManager(pluginConfig);
 
-        this.economyProvider = new TerrEconomyProvider(this, economyService, pluginConfig);
-        getServer().getServicesManager().register(
-                Economy.class, economyProvider, this, ServicePriority.Normal);
-
         getServer().getPluginManager().registerEvents(
-                new PlayerConnectionListener(this, cache, playerRepository, pluginConfig, economyService, notifier),
+                new PlayerConnectionListener(this, cache, playerRepository,
+                        pluginConfig, economyService, notifier),
                 this);
 
         this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
@@ -82,7 +108,7 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         scheduleAutoSave();
         schedulePendingCleanup();
 
-        new Metrics(this, 12345);
+        new Metrics(this, BSTATS_ID);
 
         this.updateNotifier = new UpdateNotifier(this, pluginConfig);
         this.updateNotifier.checkAsync();
@@ -106,13 +132,18 @@ public final class TerrEconomyPlugin extends JavaPlugin {
                 .getTaskId();
     }
 
+    // ------------------------------------------------------------------
+    // DISABLE
+    // ------------------------------------------------------------------
     @Override
     public void onDisable() {
         if (autoSaveTaskId != -1) {
             getServer().getScheduler().cancelTask(autoSaveTaskId);
+            autoSaveTaskId = -1;
         }
         if (pendingCleanupTaskId != -1) {
             getServer().getScheduler().cancelTask(pendingCleanupTaskId);
+            pendingCleanupTaskId = -1;
         }
 
         if (commandRegistrar != null) {
@@ -121,7 +152,11 @@ public final class TerrEconomyPlugin extends JavaPlugin {
 
         // 1) Сброс балансов до остановки executor'а.
         if (cache != null && playerRepository != null) {
-            playerRepository.flushAll(cache.snapshot());
+            try {
+                playerRepository.flushAll(cache.snapshot());
+            } catch (Throwable t) {
+                getLogger().warning("Не удалось сохранить балансы при выключении: " + t.getMessage());
+            }
         }
 
         // 2) Останов executor'а (дожидается очереди).
@@ -132,6 +167,13 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         if (databaseProvider != null) {
             databaseProvider.close();
         }
+
+        // 3) Снимаем регистрацию Economy из ServicesManager.
+        if (economyRegistered) {
+            getServer().getServicesManager().unregister(Economy.class, economyProvider);
+            economyRegistered = false;
+        }
+
         getLogger().info("TerrEconomy выключен.");
     }
 
@@ -141,12 +183,17 @@ public final class TerrEconomyPlugin extends JavaPlugin {
      * инстансе через {@link ConfigLoader#load()} (он мутирует {@code get()}).
      */
     public void reloadPlugin() {
+        if (!economyRegistered) {
+            getLogger().warning("Перезагрузка невозможна: плагин ещё не инициализирован.");
+            return;
+        }
+
         configLoader.load();
         langManager.reload();
 
-        // Пересоздаём только те компоненты, которые читают конфиг при вызове
-        // (notifier держит ссылку на config — пересоздаём, чтобы обновить).
+        // notifier и pendingPayManager держат ссылку на config — пересоздаём.
         this.notifier = new NotificationManager(pluginConfig, langManager);
+        this.pendingPayManager = new PendingPayManager(pluginConfig);
 
         if (commandRegistrar != null) {
             commandRegistrar.unregister();
@@ -154,11 +201,25 @@ public final class TerrEconomyPlugin extends JavaPlugin {
         this.commandRegistrar = new CommandRegistrar(this, economyService, langManager, notifier);
         this.commandRegistrar.register();
 
-        // Перезапуск автосейва с новым интервалом.
+        // Перед перезапуском автосейва с новым интервалом — сбросим кэш.
+        if (cache != null && playerRepository != null) {
+            try {
+                playerRepository.flushAll(cache.snapshot());
+            } catch (Throwable t) {
+                getLogger().warning("Не удалось сохранить балансы при reload: " + t.getMessage());
+            }
+        }
+
         if (autoSaveTaskId != -1) {
             getServer().getScheduler().cancelTask(autoSaveTaskId);
-            scheduleAutoSave();
         }
+        scheduleAutoSave();
+
+        // Перезапускаем очистку pending-платежей с новыми настройками.
+        if (pendingCleanupTaskId != -1) {
+            getServer().getScheduler().cancelTask(pendingCleanupTaskId);
+        }
+        schedulePendingCleanup();
 
         getLogger().info("Конфигурация перезагружена.");
     }

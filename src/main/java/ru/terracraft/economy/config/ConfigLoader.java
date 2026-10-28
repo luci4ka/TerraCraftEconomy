@@ -37,10 +37,22 @@ public class ConfigLoader {
      * один и тот же инстанс: при последующих вызовах поля копируются «на месте»,
      * чтобы держатели ссылки (EconomyCache, EconomyService и т.п.) увидели
      * обновлённые значения без пересоздания.
+     *
+     * <p><b>Важно:</b> при добавлении нового поля в {@link PluginConfig}
+     * обязательно обнови {@link #copyInto(PluginConfig, PluginConfig)},
+     * иначе reload не подхватит его у держателей ссылки.
      */
     public void load() {
         try {
             PluginConfig fresh = store.update(configPath);
+            if (fresh == null) {
+                plugin.getLogger().warning(
+                        "store.update() вернул null — оставляю текущий конфиг.");
+                if (config == null) {
+                    config = new PluginConfig();
+                }
+                return;
+            }
             if (config == null) {
                 config = fresh;
             } else {
@@ -70,13 +82,18 @@ public class ConfigLoader {
         return config;
     }
 
-    /** Копирует все поля из src в dst. */
+    /**
+     * Копирует все поля из src в dst.
+     * <p><b>При добавлении поля в {@link PluginConfig} — добавь строку сюда.</b>
+     */
     private void copyInto(PluginConfig src, PluginConfig dst) {
+        if (src == null || dst == null) return;
         dst.lang = src.lang;
         dst.database = src.database;
         dst.economy = src.economy;
         dst.pay = src.pay;
         dst.notify = src.notify;
         dst.updates = src.updates;
+        dst.rateLimit = src.rateLimit;
     }
 }

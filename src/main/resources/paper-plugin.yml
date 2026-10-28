@@ -1,7 +1,7 @@
 name: TerrCraftEconomy
 version: '${version}'
 main: ru.terracraft.economy.TerrEconomyPlugin
-api-version: '26.2'          # ← было 26.3
+api-version: '26.2'
 java-version: '25'
 authors: [ luci ]
 description: Экономический плагин для сервера TerrCraft
@@ -22,7 +22,7 @@ dependencies:
       required: true
       join-classpath: true
     PlaceholderAPI:
-      load: AFTER            # ← было BEFORE (для softdep логичнее AFTER)
+      load: AFTER
       required: false
 
 permissions:

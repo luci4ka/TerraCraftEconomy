@@ -3,7 +3,6 @@ package ru.terracraft.economy.command;
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.Argument;
 import dev.jorel.commandapi.arguments.ArgumentSuggestions;
-import dev.jorel.commandapi.arguments.DoubleArgument;
 import dev.jorel.commandapi.arguments.IntegerArgument;
 import dev.jorel.commandapi.arguments.StringArgument;
 import org.bukkit.Bukkit;
@@ -20,6 +19,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class TerrEcoAdminCommandNode {
 
@@ -47,10 +47,6 @@ public class TerrEcoAdminCommandNode {
                 .register();
     }
 
-    /**
-     * В CommandAPI 12.x {@code replaceSuggestions} возвращает {@code Argument<String>},
-     * а не {@code StringArgument} — поэтому возвращаем {@code Argument<String>}.
-     */
     private Argument<String> targetArgument() {
         return new StringArgument("target")
                 .replaceSuggestions(ArgumentSuggestions.strings(info ->
@@ -63,7 +59,7 @@ public class TerrEcoAdminCommandNode {
         return new CommandAPICommand("give")
                 .withPermission(ADMIN_PERMISSION)
                 .withArguments(targetArgument())
-                .withArguments(new DoubleArgument("amount", 0.0))
+                .withArguments(new StringArgument("amount"))
                 .executes((sender, args) -> {
                     String targetName = (String) args.get("target");
                     OfflinePlayer target = PlayerResolver.resolve(targetName);
@@ -71,9 +67,20 @@ public class TerrEcoAdminCommandNode {
                         send(sender, LangKey.GENERAL_PLAYER_NOT_FOUND, Map.of("target", targetName));
                         return;
                     }
-                    BigDecimal value = scale((double) args.get("amount"));
+                    Optional<BigDecimal> parsed = parseAmount((String) args.get("amount"));
+                    if (parsed.isEmpty()) {
+                        send(sender, LangKey.GENERAL_INVALID_AMOUNT, null);
+                        return;
+                    }
+                    BigDecimal value = parsed.get();
+                    if (value.signum() <= 0) {
+                        send(sender, value.signum() == 0
+                                ? LangKey.GENERAL_INVALID_AMOUNT
+                                : LangKey.GENERAL_NEGATIVE_AMOUNT, null);
+                        return;
+                    }
                     BigDecimal newBalance = economyService.deposit(target.getUniqueId(), value);
-                    logSelfAction(sender, target, "GIVE", value);
+                    logAdminAction(sender, target, "GIVE", value);
                     Map<String, String> vars = new HashMap<>();
                     vars.put("target", displayName(target));
                     vars.put("amount", value.toPlainString());
@@ -86,7 +93,7 @@ public class TerrEcoAdminCommandNode {
         return new CommandAPICommand("take")
                 .withPermission(ADMIN_PERMISSION)
                 .withArguments(targetArgument())
-                .withArguments(new DoubleArgument("amount", 0.0))
+                .withArguments(new StringArgument("amount"))
                 .executes((sender, args) -> {
                     String targetName = (String) args.get("target");
                     OfflinePlayer target = PlayerResolver.resolve(targetName);
@@ -94,7 +101,18 @@ public class TerrEcoAdminCommandNode {
                         send(sender, LangKey.GENERAL_PLAYER_NOT_FOUND, Map.of("target", targetName));
                         return;
                     }
-                    BigDecimal value = scale((double) args.get("amount"));
+                    Optional<BigDecimal> parsed = parseAmount((String) args.get("amount"));
+                    if (parsed.isEmpty()) {
+                        send(sender, LangKey.GENERAL_INVALID_AMOUNT, null);
+                        return;
+                    }
+                    BigDecimal value = parsed.get();
+                    if (value.signum() <= 0) {
+                        send(sender, value.signum() == 0
+                                ? LangKey.GENERAL_INVALID_AMOUNT
+                                : LangKey.GENERAL_NEGATIVE_AMOUNT, null);
+                        return;
+                    }
                     BigDecimal newBalance = economyService.withdraw(target.getUniqueId(), value);
                     if (newBalance == null) {
                         BigDecimal current = economyService.getBalance(target.getUniqueId());
@@ -102,7 +120,7 @@ public class TerrEcoAdminCommandNode {
                                 Map.of("balance", current.toPlainString()));
                         return;
                     }
-                    logSelfAction(sender, target, "TAKE", value);
+                    logAdminAction(sender, target, "TAKE", value);
                     Map<String, String> vars = new HashMap<>();
                     vars.put("target", displayName(target));
                     vars.put("amount", value.toPlainString());
@@ -115,7 +133,7 @@ public class TerrEcoAdminCommandNode {
         return new CommandAPICommand("set")
                 .withPermission(ADMIN_PERMISSION)
                 .withArguments(targetArgument())
-                .withArguments(new DoubleArgument("amount", 0.0))
+                .withArguments(new StringArgument("amount"))
                 .executes((sender, args) -> {
                     String targetName = (String) args.get("target");
                     OfflinePlayer target = PlayerResolver.resolve(targetName);
@@ -123,9 +141,18 @@ public class TerrEcoAdminCommandNode {
                         send(sender, LangKey.GENERAL_PLAYER_NOT_FOUND, Map.of("target", targetName));
                         return;
                     }
-                    BigDecimal value = scale((double) args.get("amount"));
+                    Optional<BigDecimal> parsed = parseAmount((String) args.get("amount"));
+                    if (parsed.isEmpty()) {
+                        send(sender, LangKey.GENERAL_INVALID_AMOUNT, null);
+                        return;
+                    }
+                    BigDecimal value = parsed.get();
+                    if (value.signum() < 0) {
+                        send(sender, LangKey.GENERAL_NEGATIVE_AMOUNT, null);
+                        return;
+                    }
                     BigDecimal newBalance = economyService.set(target.getUniqueId(), value);
-                    logSelfAction(sender, target, "SET", value);
+                    logAdminAction(sender, target, "SET", value);
                     Map<String, String> vars = new HashMap<>();
                     vars.put("target", displayName(target));
                     vars.put("amount", value.toPlainString());
@@ -148,7 +175,7 @@ public class TerrEcoAdminCommandNode {
                     var cfg = plugin.getPluginConfig().economy;
                     BigDecimal resetValue = cfg.giveStartingBalance ? cfg.startingBalance : BigDecimal.ZERO;
                     economyService.set(target.getUniqueId(), resetValue);
-                    logSelfAction(sender, target, "RESET", resetValue);
+                    logAdminAction(sender, target, "RESET", resetValue);
                     send(sender, LangKey.ECO_RESET, Map.of("target", displayName(target)));
                 });
     }
@@ -159,8 +186,12 @@ public class TerrEcoAdminCommandNode {
                 .withArguments(new IntegerArgument("days", 1))
                 .executes((sender, args) -> {
                     int days = (int) args.get("days");
-                    int removed = plugin.getPlayerRepository().deleteInactiveAccounts(days);
-                    send(sender, LangKey.ECO_CLEANUP, Map.of("count", String.valueOf(removed)));
+                    plugin.getPlayerRepository().deleteInactiveAccountsAsync(days)
+                            .thenAccept(removed -> Bukkit.getScheduler().runTask(plugin, () -> {
+                                if (!senderIsAlive(sender)) return;
+                                send(sender, LangKey.ECO_CLEANUP,
+                                        Map.of("count", String.valueOf(removed)));
+                            }));
                 });
     }
 
@@ -173,9 +204,14 @@ public class TerrEcoAdminCommandNode {
                 });
     }
 
-    private BigDecimal scale(double rawAmount) {
-        return BigDecimal.valueOf(rawAmount)
-                .setScale(plugin.getPluginConfig().economy.fractionalDigits, RoundingMode.HALF_UP);
+    private Optional<BigDecimal> parseAmount(String raw) {
+        if (raw == null) return Optional.empty();
+        try {
+            return Optional.of(new BigDecimal(raw.trim())
+                    .setScale(plugin.getPluginConfig().economy.fractionalDigits, RoundingMode.HALF_UP));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     private String displayName(OfflinePlayer target) {
@@ -183,11 +219,17 @@ public class TerrEcoAdminCommandNode {
         return name != null ? name : target.getUniqueId().toString();
     }
 
-    private void logSelfAction(CommandSender sender, OfflinePlayer target, String op, BigDecimal amount) {
-        if (sender instanceof Player p && p.getUniqueId().equals(target.getUniqueId())) {
-            plugin.getLogger().info("Admin " + p.getName() + " performed self-eco "
+    private void logAdminAction(CommandSender sender, OfflinePlayer target, String op, BigDecimal amount) {
+        boolean self = sender instanceof Player p && p.getUniqueId().equals(target.getUniqueId());
+        if (self) {
+            plugin.getLogger().info("Admin " + sender.getName() + " performed self-eco "
                     + op + " amount=" + amount.toPlainString());
         }
+        plugin.getPlayerRepository().logTransactionAsync(null, target.getUniqueId(), amount, "ADMIN_" + op);
+    }
+
+    private boolean senderIsAlive(CommandSender sender) {
+        return !(sender instanceof Player p) || p.isOnline();
     }
 
     private void send(CommandSender sender, LangKey key, Map<String, String> placeholders) {

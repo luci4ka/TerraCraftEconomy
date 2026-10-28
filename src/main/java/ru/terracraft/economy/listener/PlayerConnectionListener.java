@@ -15,7 +15,9 @@ import ru.terracraft.economy.economy.EconomyService;
 import ru.terracraft.economy.util.NotificationManager;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -52,16 +54,20 @@ public class PlayerConnectionListener implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
 
-                if (balance == null) {
-                    BigDecimal starting = config.economy.giveStartingBalance
-                            ? config.economy.startingBalance
-                            : BigDecimal.ZERO;
-                    cache.createAccount(uuid, starting);
-                    repo.createAsync(uuid, player.getName(), starting);
-                } else {
-                    cache.load(uuid, balance);
-                    repo.updateNameAsync(uuid, player.getName());
+                // TOCTOU: пока шло async-чтение, аккаунт мог быть создан
+                // другим путём (Vault, /eco, дубль join). Не перезаписываем кэш.
+                if (!cache.hasAccount(uuid)) {
+                    if (balance == null) {
+                        BigDecimal starting = config.economy.giveStartingBalance
+                                ? config.economy.startingBalance
+                                : BigDecimal.ZERO;
+                        cache.createAccount(uuid, starting);
+                        repo.createAsync(uuid, player.getName(), starting);
+                    } else {
+                        cache.load(uuid, balance);
+                    }
                 }
+                repo.updateNameAsync(uuid, player.getName());
 
                 deliverPendingPayments(player);
             });
@@ -91,42 +97,36 @@ public class PlayerConnectionListener implements Listener {
             List<Long> ids = pending.stream().map(PlayerRepository.PendingPayment::id).toList();
 
             // Удаление — через репозиторный executor (не commonPool).
-            // Проверку isOnline — в main, чтобы не гонять её в async-потоке.
             return repo.getNameByUuidAsync(lastSenderUuid).thenCompose(lastSender ->
                     repo.deletePendingPaymentsAndReturnAsync(ids).thenAccept(deleted -> {
                         if (deleted.isEmpty()) return;
 
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (!player.isOnline()) {
-                                // Игрок вышел между delete и зачислением.
-                                // Зачисляем в кэш всё равно — потерять нельзя,
-                                // onQuit/flushAll сохранит balance в БД.
-                                BigDecimal total = BigDecimal.ZERO;
-                                int count = 0;
-                                for (var p : pending) {
-                                    if (!deleted.contains(p.id())) continue;
-                                    economyService.deposit(uuid, p.amount());
-                                    total = total.add(p.amount());
-                                    count++;
-                                }
-                                if (count > 0) {
-                                    plugin.getLogger().info(
-                                            "Офлайн-платежи для " + uuid + " зачислены в кэш, но игрок уже вышел"
-                                                    + " (count=" + count + ", total=" + total.toPlainString() + ")");
-                                }
-                                return;
-                            }
+                        Set<Long> deletedSet = new HashSet<>(deleted);
 
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            // Зачисляем ВСЕГДА, независимо от того, онлайн игрок или нет.
+                            // Если игрок вышел между delete и зачислением — деньги
+                            // остаются в кэше, но мы ЯВНО сохраняем баланс в БД,
+                            // не полагаясь на onQuit/flushAll (onQuit уже отработал).
                             BigDecimal total = BigDecimal.ZERO;
                             int count = 0;
                             for (var p : pending) {
-                                if (!deleted.contains(p.id())) continue;
+                                if (!deletedSet.contains(p.id())) continue;
                                 economyService.deposit(uuid, p.amount());
                                 total = total.add(p.amount());
                                 count++;
                             }
-                            if (count > 0) {
+                            if (count == 0) return;
+
+                            // Гарантируем persist нового баланса в БД.
+                            repo.updateBalanceAsync(uuid, cache.getBalance(uuid));
+
+                            if (player.isOnline()) {
                                 notifier.offlinePaymentDelivered(player, lastSender, total, count, total);
+                            } else {
+                                plugin.getLogger().info(
+                                        "Офлайн-платежи для " + uuid + " зачислены в кэш, но игрок уже вышел"
+                                                + " (count=" + count + ", total=" + total.toPlainString() + ")");
                             }
                         });
                     })

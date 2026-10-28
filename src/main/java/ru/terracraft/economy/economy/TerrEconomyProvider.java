@@ -69,8 +69,8 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public EconomyResponse withdrawPlayer(UUID uuid, double amount) {
-        if (uuid == null) return fail("Player not found");
-        if (amount < 0) return fail("Amount cannot be negative");
+        if (uuid == null) return fail("Player not found", 0.0);
+        if (amount < 0) return fail("Amount cannot be negative", service.getBalance(uuid).doubleValue());
         if (amount == 0.0) {
             return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
                     EconomyResponse.ResponseType.SUCCESS, null);
@@ -91,21 +91,21 @@ public class TerrEconomyProvider implements Economy {
 
     @Override
     public EconomyResponse depositPlayer(UUID uuid, double amount) {
-        if (uuid == null) return fail("Player not found");
-        if (amount < 0) return fail("Amount cannot be negative");
+        if (uuid == null) return fail("Player not found", 0.0);
+        if (amount < 0) return fail("Amount cannot be negative", service.getBalance(uuid).doubleValue());
         if (amount == 0.0) {
             return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
                     EconomyResponse.ResponseType.SUCCESS, null);
         }
 
-        var result = service.depositAndReport(uuid, BigDecimal.valueOf(amount));
-        if (result.overflow().signum() > 0) {
-            return new EconomyResponse(amount, result.newBalance().doubleValue(),
-                    EconomyResponse.ResponseType.FAILURE,
-                    "Max balance exceeded: credited " + result.credited().toPlainString()
-                            + ", overflow " + result.overflow().toPlainString());
+        var scaled = BigDecimal.valueOf(amount)
+                .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
+        // Атомарно: либо зачислено полностью, либо FAILURE без изменения баланса.
+        if (!service.depositAllOrNothing(uuid, scaled)) {
+            return new EconomyResponse(0, service.getBalance(uuid).doubleValue(),
+                    EconomyResponse.ResponseType.FAILURE, "Max balance exceeded");
         }
-        return new EconomyResponse(amount, result.newBalance().doubleValue(),
+        return new EconomyResponse(amount, service.getBalance(uuid).doubleValue(),
                 EconomyResponse.ResponseType.SUCCESS, null);
     }
 
@@ -135,12 +135,12 @@ public class TerrEconomyProvider implements Economy {
     }
     @Override public boolean has(OfflinePlayer player, String worldName, double amount) { return has(player, amount); }
     @Override public EconomyResponse withdrawPlayer(OfflinePlayer player, double amount) {
-        if (player == null) return fail("Player not found");
+        if (player == null) return fail("Player not found", 0.0);
         return withdrawPlayer(player.getUniqueId(), amount);
     }
     @Override public EconomyResponse withdrawPlayer(OfflinePlayer player, String worldName, double amount) { return withdrawPlayer(player, amount); }
     @Override public EconomyResponse depositPlayer(OfflinePlayer player, double amount) {
-        if (player == null) return fail("Player not found");
+        if (player == null) return fail("Player not found", 0.0);
         return depositPlayer(player.getUniqueId(), amount);
     }
     @Override public EconomyResponse depositPlayer(OfflinePlayer player, String worldName, double amount) { return depositPlayer(player, amount); }
@@ -165,13 +165,13 @@ public class TerrEconomyProvider implements Economy {
     @Override public boolean has(String playerName, String worldName, double amount) { return has(playerName, amount); }
     @Override public EconomyResponse withdrawPlayer(String playerName, double amount) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
-        if (p == null) return fail("Player not found");
+        if (p == null) return fail("Player not found", 0.0);
         return withdrawPlayer(p, amount);
     }
     @Override public EconomyResponse withdrawPlayer(String playerName, String worldName, double amount) { return withdrawPlayer(playerName, amount); }
     @Override public EconomyResponse depositPlayer(String playerName, double amount) {
         var p = Bukkit.getOfflinePlayerIfCached(playerName);
-        if (p == null) return fail("Player not found");
+        if (p == null) return fail("Player not found", 0.0);
         return depositPlayer(p, amount);
     }
     @Override public EconomyResponse depositPlayer(String playerName, String worldName, double amount) { return depositPlayer(playerName, amount); }
@@ -193,8 +193,8 @@ public class TerrEconomyProvider implements Economy {
     @Override public EconomyResponse isBankMember(String name, String playerName) { return notImpl(); }
     @Override public List<String> getBanks() { return List.of(); }
 
-    private EconomyResponse fail(String msg) {
-        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, msg);
+    private EconomyResponse fail(String msg, double balance) {
+        return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, msg);
     }
     private EconomyResponse notImpl() {
         return new EconomyResponse(0, 0, EconomyResponse.ResponseType.NOT_IMPLEMENTED, "Banks are not supported");

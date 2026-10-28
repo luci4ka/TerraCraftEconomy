@@ -1,6 +1,14 @@
 prefix: "<dark_gray>[<gold>TerrEconomy<dark_gray>] <reset>"
 
+# Forms of the currency name for pluralization.
+# en_US: 2 forms (singular for 1, plural-many for everything else).
+currency:
+  singular: "coin"
+  plural-few: "coins"
+  plural-many: "coins"
+
 messages:
+  # reserved, not used yet (all commands are executesPlayer)
   general.only-players: "<red>This command is for players only."
   general.no-permission: "<red>You don't have permission."
   general.player-not-found: "<red>Player <yellow><target></yellow> not found."
@@ -8,12 +16,18 @@ messages:
   general.invalid-amount: "<red>Invalid amount."
   general.negative-amount: "<red>Amount must be positive."
   general.self-action: "<red>You cannot perform this action on yourself."
-  general.payconfirm: "<yellow>Confirm transfer of <white><amount> <symbol></white> to <yellow><target></yellow>. Type <white>/payconfirm</white> within 15 seconds."
-  general.payconfirm-replaced: "<yellow>Previous request (<white><old_amount> <symbol></white> → <yellow><old_target></yellow>) cancelled. Confirm new: <white><amount> <symbol></white> → <yellow><target></yellow>. Type <white>/payconfirm</white>."
+  general.rate-limit: "<red>Please wait <yellow><seconds></yellow> sec. before the next command."
+  general.payconfirm: "<yellow>Confirm transfer of <white><amount> <symbol></white> to <yellow><target></yellow>. Type <white>/payconfirm</white> within <white><timeout></white> seconds."
+  general.payconfirm-replaced: "<yellow>Previous request (<white><old_amount> <symbol></white> → <yellow><old_target></yellow>) cancelled. Confirm new: <white><amount> <symbol></white> → <yellow><target></yellow>. Type <white>/payconfirm</white> within <white><timeout></white> seconds."
   general.payconfirm-timeout: "<red>No active transfer or confirmation timed out."
   eco.cleanup: "<green>Removed inactive accounts: <yellow><count></yellow>"
   general.reloaded: "<green>Configuration and language files reloaded."
 
+  # Styled format of amount with pluralized currency.
+  # Usage: lang.formatCurrencyStyled(player, amount).
+  currency.format: "<white><amount></white> <gray><currency></gray>"
+
+  # reserved, not used yet (top not implemented)
   balance.self: "<gold>Your balance: <yellow><balance>"
   balance.other: "<gold>Balance of <yellow><target></yellow>: <yellow><balance>"
   balance.top-header: "<gold>=== Richest players ==="
@@ -40,27 +54,27 @@ messages:
   abbrev.b: "B"
 
   notify.pay.sent-title: "<gold>💸 Payment sent"
-  notify.pay.label-target: "<gray>  To: <yellow><target>"
+  notify.pay.label-target: "<gray>  To"
   notify.pay.received-title: "<green>💰 Payment received"
   notify.pay.received-subtitle: "<gray>+<amount> <symbol> from <sender>"
-  notify.pay.label-sender: "<gray>  From: <yellow><sender>"
+  notify.pay.label-sender: "<gray>  From"
   notify.pay.action-sent: "<red>💸 -<amount> <symbol>"
   notify.pay.action-received: "<green>💰 +<amount> <symbol>"
   notify.pay.action-queued: "<yellow>📬 Payment queued for <target>"
   notify.pay.queued-title: "<yellow>  📬 Payment queued"
-  notify.pay.queued-line-target: "<gray>  Recipient: <yellow><target>"
-  notify.pay.queued-line-amount: "<gray>  Amount: <white><amount> <symbol>"
-  notify.pay.queued-line-tax: "<gray>  Tax: <red>-<tax> <symbol>"
-  notify.pay.queued-line-deliver: "<gray>  Will be delivered on join: <green><amount> <symbol>"
+  notify.pay.queued-line-target: "<gray>  Recipient"
+  notify.pay.queued-line-amount: "<gray>  Amount"
+  notify.pay.queued-line-tax: "<gray>  Tax"
+  notify.pay.queued-line-deliver: "<gray>  Will be delivered on join"
   notify.pay.delivered-title: "<gold>📬 Payments delivered"
   notify.pay.delivered-subtitle: "<gray>+<amount> <symbol> from <sender>"
   notify.pay.delivered-summary: "<gray>  Total delivered: <yellow><count></yellow> pcs. for <green><total> <symbol>"
 
   notify.receipt.hover-name: "<gray>Click to view balance"
   notify.receipt.hover-tax: "<gray>Rate: <red><percent>%"
-  notify.receipt.line-amount: "<gray>  Amount: <white><amount> <symbol>"
-  notify.receipt.line-tax: "<gray>  Tax: <red>-<tax> <symbol>"
-  notify.receipt.line-total: "<gray>  Total: <green><amount> <symbol>"
+  notify.receipt.line-amount: "<gray>  Amount"
+  notify.receipt.line-tax: "<gray>  Tax"
+  notify.receipt.line-total: "<gray>  Total"
 
   notify.balance.self-title: "<gold>  💰 Your balance"
   notify.balance.self-hover: "<gray>Coins can be transferred via /pay"

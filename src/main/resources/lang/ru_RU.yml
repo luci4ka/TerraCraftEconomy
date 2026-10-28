@@ -1,6 +1,14 @@
 prefix: "<dark_gray>[<gold>TerrEconomy<dark_gray>] <reset>"
 
+# Формы названия валюты для плюрализации.
+# ru_RU: 3 формы (singular, plural-few, plural-many).
+currency:
+  singular: "монета"
+  plural-few: "монеты"
+  plural-many: "монет"
+
 messages:
+  # reserved, not used yet (все команды — executesPlayer)
   general.only-players: "<red>Эта команда только для игроков."
   general.no-permission: "<red>У вас нет прав."
   general.player-not-found: "<red>Игрок <yellow><target></yellow> не найден."
@@ -8,12 +16,19 @@ messages:
   general.invalid-amount: "<red>Некорректная сумма."
   general.negative-amount: "<red>Сумма должна быть положительной."
   general.self-action: "<red>Нельзя выполнить действие с самим собой."
-  general.payconfirm: "<yellow>Подтвердите перевод <white><amount> <symbol></white> игроку <yellow><target></yellow>. Введите <white>/payconfirm</white> в течение 15 секунд."
-  general.payconfirm-replaced: "<yellow>Предыдущий запрос (<white><old_amount> <symbol></white> → <yellow><old_target></yellow>) отменён. Подтвердите новый: <white><amount> <symbol></white> → <yellow><target></yellow>. Введите <white>/payconfirm</white>."
+  general.rate-limit: "<red>Подождите <yellow><seconds></yellow> сек. перед следующей командой."
+  general.payconfirm: "<yellow>Подтвердите перевод <white><amount> <symbol></white> игроку <yellow><target></yellow>. Введите <white>/payconfirm</white> в течение <white><timeout></white> секунд."
+  general.payconfirm-replaced: "<yellow>Предыдущий запрос (<white><old_amount> <symbol></white> → <yellow><old_target></yellow>) отменён. Подтвердите новый: <white><amount> <symbol></white> → <yellow><target></yellow>. Введите <white>/payconfirm</white> в течение <white><timeout></white> секунд."
   general.payconfirm-timeout: "<red>Нет активного перевода или время подтверждения истекло."
   eco.cleanup: "<green>Удалено неактивных аккаунтов: <yellow><count></yellow>"
   general.reloaded: "<green>Конфигурация и языковые файлы перезагружены."
 
+  # Стилизованный формат суммы с плюрализованной валютой.
+  # Использование: lang.formatCurrencyStyled(player, amount).
+  # <amount> — число, <currency> — форма ("монета"/"монеты"/"монет").
+  currency.format: "<white><amount></white> <gray><currency></gray>"
+
+  # reserved, not used yet (топ пока не реализован в NotificationManager)
   balance.self: "<gold>Ваш баланс: <yellow><balance>"
   balance.other: "<gold>Баланс <yellow><target></yellow>: <yellow><balance>"
   balance.top-header: "<gold>=== Топ богатейших ==="
@@ -40,27 +55,27 @@ messages:
   abbrev.b: "млрд"
 
   notify.pay.sent-title: "<gold>💸 Перевод выполнен"
-  notify.pay.label-target: "<gray>  Кому: <yellow><target>"
+  notify.pay.label-target: "<gray>  Кому"
   notify.pay.received-title: "<green>💰 Получен перевод"
   notify.pay.received-subtitle: "<gray>+<amount> <symbol> от <sender>"
-  notify.pay.label-sender: "<gray>  От: <yellow><sender>"
+  notify.pay.label-sender: "<gray>  От"
   notify.pay.action-sent: "<red>💸 -<amount> <symbol>"
   notify.pay.action-received: "<green>💰 +<amount> <symbol>"
   notify.pay.action-queued: "<yellow>📬 Платёж отложен для <target>"
   notify.pay.queued-title: "<yellow>  📬 Платёж отложен"
-  notify.pay.queued-line-target: "<gray>  Получатель: <yellow><target>"
-  notify.pay.queued-line-amount: "<gray>  Сумма: <white><amount> <symbol>"
-  notify.pay.queued-line-tax: "<gray>  Налог: <red>-<tax> <symbol>"
-  notify.pay.queued-line-deliver: "<gray>  Доставим при входе: <green><amount> <symbol>"
+  notify.pay.queued-line-target: "<gray>  Получатель"
+  notify.pay.queued-line-amount: "<gray>  Сумма"
+  notify.pay.queued-line-tax: "<gray>  Налог"
+  notify.pay.queued-line-deliver: "<gray>  Доставим при входе"
   notify.pay.delivered-title: "<gold>📬 Доставлены платежи"
   notify.pay.delivered-subtitle: "<gray>+<amount> <symbol> от <sender>"
   notify.pay.delivered-summary: "<gray>  Всего доставлено: <yellow><count></yellow> шт. на <green><total> <symbol>"
 
   notify.receipt.hover-name: "<gray>Нажми, чтобы посмотреть баланс"
   notify.receipt.hover-tax: "<gray>Ставка: <red><percent>%"
-  notify.receipt.line-amount: "<gray>  Сумма: <white><amount> <symbol>"
-  notify.receipt.line-tax: "<gray>  Налог: <red>-<tax> <symbol>"
-  notify.receipt.line-total: "<gray>  Итог: <green><amount> <symbol>"
+  notify.receipt.line-amount: "<gray>  Сумма"
+  notify.receipt.line-tax: "<gray>  Налог"
+  notify.receipt.line-total: "<gray>  Итог"
 
   notify.balance.self-title: "<gold>  💰 Ваш баланс"
   notify.balance.self-hover: "<gray>Монеты можно перевести через /pay"

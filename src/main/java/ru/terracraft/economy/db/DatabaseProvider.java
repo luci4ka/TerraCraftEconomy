@@ -13,10 +13,6 @@ import java.sql.Statement;
 
 public class DatabaseProvider {
 
-    /**
-     * Точность хранения в БД — заведомо больше любого разумного
-     * fractionalDigits (0..8). В кэше/сервисе — своё scale.
-     */
     private static final int DB_SCALE = 8;
 
     private final Plugin plugin;
@@ -98,24 +94,23 @@ public class DatabaseProvider {
         }
     }
 
-    /**
-     * Идемпотентно расширяет DECIMAL-колонки до {@link #DB_SCALE}.
-     * Нужно для апгрейда со старых версий, где было DECIMAL(20,2).
-     */
     private void migrateColumnScale(Connection c) {
-        migrateColumn(c, "players", "balance");
-        migrateColumn(c, "pending_payments", "amount");
-        migrateColumn(c, "transactions", "amount");
+        // players.balance — с DEFAULT 0 (соответствует CREATE TABLE).
+        migrateColumn(c, "players", "balance", true);
+        // amount в pending/transactions — без DEFAULT (сумма обязательна).
+        migrateColumn(c, "pending_payments", "amount", false);
+        migrateColumn(c, "transactions", "amount", false);
     }
 
-    private void migrateColumn(Connection c, String table, String column) {
+    private void migrateColumn(Connection c, String table, String column, boolean hasDefault) {
         try {
             Integer currentScale = readNumericScale(c, table, column);
             if (currentScale == null) return;
             if (currentScale >= DB_SCALE) return;
 
             String alterSql = "ALTER TABLE " + table + " MODIFY " + column
-                    + " DECIMAL(20," + DB_SCALE + ") NOT NULL DEFAULT 0";
+                    + " DECIMAL(20," + DB_SCALE + ") NOT NULL"
+                    + (hasDefault ? " DEFAULT 0" : "");
             try (Statement st = c.createStatement()) {
                 st.execute(alterSql);
                 plugin.getLogger().info(
@@ -201,14 +196,6 @@ public class DatabaseProvider {
         }
     }
 
-    /**
-     * MineSQL выдаёт pooled-соединение из BeeCP; {@code Connection#close()}
-     * возвращает его в пул. {@code try-with-resources} достаточно —
-     * явный {@code releaseConnection} не требуется.
-     * Если пул начнёт «залипать» (одинаковый {@code conn=NNNNN} в логах
-     * ошибок), проверь версию MineSQL: в 1.4.2 некоторые пути
-     * {@code SQLManager#getConnection()} могут не возвращать connection.
-     */
     public Connection getConnection() throws SQLException {
         if (sqlManager == null) {
             throw new SQLException("MineSQL не инициализирован.");

@@ -22,12 +22,20 @@ public class NotificationManager {
     /** Длина разделительной линии в чате (символов). */
     private static final int LINE_LENGTH = 40;
 
-    /** Отступ для строк внутри блока. */
-    private static final String INDENT = "  ";
+    /** Готовая линия — immutable, кешируем, чтобы не плодить Component на каждый чек. */
+    private static final Component LINE_GOLD = lineOf(NamedTextColor.GOLD);
+    private static final Component LINE_GREEN = lineOf(NamedTextColor.GREEN);
+    private static final Component LINE_YELLOW = lineOf(NamedTextColor.YELLOW);
+    private static final Component LINE_AQUA = lineOf(NamedTextColor.AQUA);
 
-    /** Текстовые маркеры вместо эмодзи. */
+    /**
+     * Отступ и маркеры строк — намеренно НЕ локализуемы: это типографика
+     * блока, а не текст сообщения. Если понадобится RTL-адаптация —
+     * выносить в YAML отдельными ключами.
+     */
+    private static final String INDENT = "  ";
     private static final String MARKER = "▸ ";
-    private static final String BULLET = "• ";
+    private static final String LABEL_SEPARATOR = ": ";
 
     /** Время показа Title (fadeIn, stay, fadeOut). */
     private static final Title.Times TITLE_TIMES = Title.Times.times(
@@ -45,17 +53,29 @@ public class NotificationManager {
 
     // ============ Хелперы сборки ============
 
-    private Component line(NamedTextColor color) {
+    private static Component lineOf(NamedTextColor color) {
         return Component.text("━".repeat(LINE_LENGTH)).color(color);
     }
 
-    /** Оборачивает набор строк в рамку с линиями сверху и снизу. */
+    private static Component lineFor(NamedTextColor color) {
+        if (color == NamedTextColor.GOLD) return LINE_GOLD;
+        if (color == NamedTextColor.GREEN) return LINE_GREEN;
+        if (color == NamedTextColor.YELLOW) return LINE_YELLOW;
+        if (color == NamedTextColor.AQUA) return LINE_AQUA;
+        return lineOf(color);
+    }
+
+    /**
+     * Оборачивает набор строк в рамку с линиями сверху и снизу.
+     * {@code null}-элементы пропускаются (например, опциональный блок налога).
+     */
     private Component block(NamedTextColor accent, Component... lines) {
-        Component result = Component.empty().append(line(accent));
+        Component result = Component.empty().append(lineFor(accent));
         for (Component line : lines) {
+            if (line == null) continue;
             result = result.append(Component.newline()).append(line);
         }
-        return result.append(Component.newline()).append(line(accent));
+        return result.append(Component.newline()).append(lineFor(accent));
     }
 
     /** Добавляет отступ в начало строки. */
@@ -63,13 +83,33 @@ public class NotificationManager {
         return Component.text(INDENT).append(content);
     }
 
-    /** Строка «маркер + подпись + значение» с отступом. */
+    /**
+     * Строка «маркер + подпись + значение» с отступом.
+     * <p>YAML-ключи для {@code label} должны быть <b>без</b> завершающего
+     * {@code ": "} и <b>без</b> плейсхолдера значения — разделитель и значение
+     * добавляет этот метод.
+     */
     private Component row(NamedTextColor markerColor, Component label, Component value) {
         return indented(
                 Component.text(MARKER).color(markerColor)
                         .append(label)
-                        .append(Component.text(": ").color(NamedTextColor.DARK_GRAY))
+                        .append(Component.text(LABEL_SEPARATOR).color(NamedTextColor.DARK_GRAY))
                         .append(value)
+        );
+    }
+
+    /**
+     * Строка «маркер + label + name» для чека, где имя — самостоятельный
+     * компонент с hover/click. YAML-ключ для label — без плейсхолдера имени.
+     */
+    private Component rowWithName(Player receiver, LangKey labelKey,
+                                  NamedTextColor accent, Component name) {
+        Component label = lang.msgNoPrefix(receiver, labelKey).color(NamedTextColor.GRAY);
+        return indented(
+                Component.text(MARKER).color(accent)
+                        .append(label)
+                        .append(Component.text(LABEL_SEPARATOR).color(NamedTextColor.DARK_GRAY))
+                        .append(name)
         );
     }
 
@@ -97,7 +137,7 @@ public class NotificationManager {
                 targetName,
                 amount, tax, netAmount,
                 NamedTextColor.GOLD,
-                true  // отправитель видит налог
+                true
         ));
 
         sender.sendActionBar(lang.msgNoPrefix(sender, LangKey.NOTIFY_PAY_ACTION_SENT, Map.of(
@@ -134,7 +174,7 @@ public class NotificationManager {
                 senderName,
                 amount, tax, netAmount,
                 NamedTextColor.GREEN,
-                false  // получатель не платил налог — не показываем
+                false
         ));
 
         playSound(target, config.notify.receiveSound);
@@ -261,10 +301,6 @@ public class NotificationManager {
 
     // ============ Чек ============
 
-    /**
-     * @param showTax true — показать блок налога (для отправителя);
-     *                false — скрыть (для получателя, который налог не платил).
-     */
     private Component buildReceipt(Player receiver,
                                    LangKey titleKey,
                                    LangKey labelKey,
@@ -277,9 +313,6 @@ public class NotificationManager {
         Component title = lang.msgNoPrefix(receiver, titleKey)
                 .color(accent)
                 .decoration(TextDecoration.BOLD, true);
-
-        Component label = lang.msgNoPrefix(receiver, labelKey)
-                .color(NamedTextColor.GRAY);
 
         Component name = Component.text(otherPlayerName)
                 .color(NamedTextColor.YELLOW)
@@ -310,19 +343,11 @@ public class NotificationManager {
                         .color(NamedTextColor.GREEN)
                         .decoration(TextDecoration.BOLD, true));
 
-        if (taxRow != null) {
-            return block(accent,
-                    indented(title),
-                    indented(Component.text(MARKER).color(accent).append(label).append(Component.text(": ").color(NamedTextColor.DARK_GRAY)).append(name)),
-                    amountRow,
-                    taxRow,
-                    totalRow);
-        } else {
-            return block(accent,
-                    indented(title),
-                    indented(Component.text(MARKER).color(accent).append(label).append(Component.text(": ").color(NamedTextColor.DARK_GRAY)).append(name)),
-                    amountRow,
-                    totalRow);
-        }
+        return block(accent,
+                indented(title),
+                rowWithName(receiver, labelKey, accent, name),
+                amountRow,
+                taxRow,
+                totalRow);
     }
 }

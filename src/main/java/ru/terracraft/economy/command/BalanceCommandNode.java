@@ -6,9 +6,11 @@ import dev.jorel.commandapi.arguments.StringArgument;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import ru.terracraft.economy.config.PluginConfig;
 import ru.terracraft.economy.economy.EconomyService;
 import ru.terracraft.economy.lang.LangKey;
 import ru.terracraft.economy.lang.LangManager;
+import ru.terracraft.economy.util.CooldownManager;
 import ru.terracraft.economy.util.NotificationManager;
 import ru.terracraft.economy.util.PlayerResolver;
 
@@ -22,11 +24,17 @@ public class BalanceCommandNode {
     private final EconomyService economyService;
     private final LangManager lang;
     private final NotificationManager notifier;
+    private final CooldownManager cooldownManager;
+    private final PluginConfig config;
 
-    public BalanceCommandNode(EconomyService economyService, LangManager lang, NotificationManager notifier) {
+    public BalanceCommandNode(EconomyService economyService, LangManager lang,
+                              NotificationManager notifier, CooldownManager cooldownManager,
+                              PluginConfig config) {
         this.economyService = economyService;
         this.lang = lang;
         this.notifier = notifier;
+        this.cooldownManager = cooldownManager;
+        this.config = config;
     }
 
     public void register() {
@@ -38,6 +46,14 @@ public class BalanceCommandNode {
                                         .map(Player::getName)
                                         .toArray(String[]::new))))
                 .executesPlayer((player, args) -> {
+                    if (!cooldownManager.tryAcquire(player.getUniqueId(), "balance",
+                            config.rateLimit.balanceCooldownMs)) {
+                        long remaining = cooldownManager.remaining(player.getUniqueId(), "balance");
+                        player.sendMessage(lang.msg(player, LangKey.GENERAL_RATE_LIMIT,
+                                Map.of("seconds", String.valueOf(Math.max(1, remaining / 1000)))));
+                        return;
+                    }
+
                     String targetName = (String) args.getOptional("target").orElse(null);
 
                     if (targetName == null) {
@@ -67,7 +83,6 @@ public class BalanceCommandNode {
         BigDecimal balance = economyService.getBalance(target.getUniqueId());
 
         if (target.getUniqueId().equals(viewer.getUniqueId())) {
-            // /balance <self> → показываем как свой баланс
             notifier.showSelfBalance(viewer, balance);
             return;
         }

@@ -10,6 +10,7 @@ public enum LangKey {
     GENERAL_NEGATIVE_AMOUNT("general.negative-amount"),
     GENERAL_SELF_ACTION("general.self-action"),
     GENERAL_RELOADED("general.reloaded"),
+    GENERAL_RATE_LIMIT("general.rate-limit"),
     GENERAL_PAYCONFIRM("general.payconfirm"),
     GENERAL_PAYCONFIRM_REPLACED("general.payconfirm-replaced"),
     GENERAL_PAYCONFIRM_TIMEOUT("general.payconfirm-timeout"),
@@ -62,10 +63,13 @@ public enum LangKey {
     NOTIFY_BALANCE_SELF_HOVER("notify.balance.self-hover"),
     NOTIFY_BALANCE_OTHER_TITLE("notify.balance.other-title"),
     NOTIFY_BALANCE_OTHER_HOVER("notify.balance.other-hover"),
+    NOTIFY_BALANCE_ACTION("notify.balance.action"),
+
+    CURRENCY_FORMAT("currency.format"),
+
     ABBREV_K("abbrev.k"),
     ABBREV_M("abbrev.m"),
-    ABBREV_B("abbrev.b"),
-    NOTIFY_BALANCE_ACTION("notify.balance.action");
+    ABBREV_B("abbrev.b");
 
     private final String key;
 

@@ -2,7 +2,6 @@ package ru.terracraft.economy.command;
 
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.ArgumentSuggestions;
-import dev.jorel.commandapi.arguments.DoubleArgument;
 import dev.jorel.commandapi.arguments.StringArgument;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -12,6 +11,7 @@ import ru.terracraft.economy.config.PluginConfig;
 import ru.terracraft.economy.economy.EconomyService;
 import ru.terracraft.economy.lang.LangKey;
 import ru.terracraft.economy.lang.LangManager;
+import ru.terracraft.economy.util.CooldownManager;
 import ru.terracraft.economy.util.NotificationManager;
 import ru.terracraft.economy.util.PendingPayConfirm;
 import ru.terracraft.economy.util.PlayerResolver;
@@ -19,6 +19,7 @@ import ru.terracraft.economy.util.PlayerResolver;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Map;
+import java.util.Optional;
 
 public class PayCommandNode {
 
@@ -27,14 +28,17 @@ public class PayCommandNode {
     private final LangManager lang;
     private final PluginConfig config;
     private final NotificationManager notifier;
+    private final CooldownManager cooldownManager;
 
     public PayCommandNode(TerrEconomyPlugin plugin, EconomyService economyService, LangManager lang,
-                          PluginConfig config, NotificationManager notifier) {
+                          PluginConfig config, NotificationManager notifier,
+                          CooldownManager cooldownManager) {
         this.plugin = plugin;
         this.economyService = economyService;
         this.lang = lang;
         this.config = config;
         this.notifier = notifier;
+        this.cooldownManager = cooldownManager;
     }
 
     public void register() {
@@ -44,13 +48,25 @@ public class PayCommandNode {
                                 Bukkit.getOnlinePlayers().stream()
                                         .map(Player::getName)
                                         .toArray(String[]::new))))
-                .withArguments(new DoubleArgument("amount", 0.01))
+                .withArguments(new StringArgument("amount"))
                 .executesPlayer((player, args) -> {
-                    String targetName = (String) args.get("target");
-                    double rawAmount = (double) args.get("amount");
+                    if (!cooldownManager.tryAcquire(player.getUniqueId(), "pay",
+                            config.rateLimit.payCooldownMs)) {
+                        long remaining = cooldownManager.remaining(player.getUniqueId(), "pay");
+                        player.sendMessage(lang.msg(player, LangKey.GENERAL_RATE_LIMIT,
+                                Map.of("seconds", String.valueOf(Math.max(1, remaining / 1000)))));
+                        return;
+                    }
 
-                    BigDecimal amount = BigDecimal.valueOf(rawAmount)
-                            .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP);
+                    String targetName = (String) args.get("target");
+                    String rawAmount = (String) args.get("amount");
+
+                    Optional<BigDecimal> parsed = parseAmount(rawAmount);
+                    if (parsed.isEmpty()) {
+                        player.sendMessage(lang.msg(player, LangKey.GENERAL_INVALID_AMOUNT));
+                        return;
+                    }
+                    BigDecimal amount = parsed.get();
 
                     if (amount.signum() == 0) {
                         player.sendMessage(lang.msg(player, LangKey.GENERAL_INVALID_AMOUNT));
@@ -66,19 +82,25 @@ public class PayCommandNode {
                         PendingPayConfirm previous = plugin.getPendingPayManager()
                                 .createAndReturnPrevious(player.getUniqueId(), targetName, amount);
 
-                        if (previous != null && previous.getAmount().compareTo(amount) != 0) {
+                        boolean replaced = previous != null
+                                && (previous.getAmount().compareTo(amount) != 0
+                                || !previous.getTargetName().equalsIgnoreCase(targetName));
+
+                        if (replaced) {
                             player.sendMessage(lang.msg(player, LangKey.GENERAL_PAYCONFIRM_REPLACED, Map.of(
                                     "old_target", previous.getTargetName(),
                                     "old_amount", previous.getAmount().toPlainString(),
                                     "target", targetName,
                                     "amount", amount.toPlainString(),
-                                    "symbol", config.economy.currencySymbol
+                                    "symbol", config.economy.currencySymbol,
+                                    "timeout", String.valueOf(config.pay.confirmTimeout)
                             )));
                         } else {
                             player.sendMessage(lang.msg(player, LangKey.GENERAL_PAYCONFIRM, Map.of(
                                     "target", targetName,
                                     "amount", amount.toPlainString(),
-                                    "symbol", config.economy.currencySymbol
+                                    "symbol", config.economy.currencySymbol,
+                                    "timeout", String.valueOf(config.pay.confirmTimeout)
                             )));
                         }
                         return;
@@ -98,6 +120,16 @@ public class PayCommandNode {
                     executePayment(player, pending.getTargetName(), pending.getAmount());
                 })
                 .register();
+    }
+
+    private Optional<BigDecimal> parseAmount(String raw) {
+        if (raw == null) return Optional.empty();
+        try {
+            return Optional.of(new BigDecimal(raw.trim())
+                    .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     private void executePayment(Player sender, String targetName, BigDecimal amount) {
@@ -141,8 +173,6 @@ public class PayCommandNode {
 
         String targetDisplayName = target.getName() != null ? target.getName() : targetName;
 
-        // Проверка maxBalance получателя (важно и для онлайн, и для офлайн —
-        // иначе деньги «сгорят» при deposit/overflow).
         BigDecimal targetBalance = economyService.getBalance(target.getUniqueId());
         BigDecimal maxBalance = config.economy.maxBalance;
         if (targetBalance.add(netAmount).compareTo(maxBalance) > 0) {
@@ -169,10 +199,9 @@ public class PayCommandNode {
                             Map.of("balance", current.toPlainString())));
                 }
                 case TARGET_OVERFLOW -> {
-                    BigDecimal currentTarget = economyService.getBalance(onlineTarget.getUniqueId());
                     sender.sendMessage(lang.msg(sender, LangKey.PAY_TARGET_MAX_BALANCE, Map.of(
                             "target", targetDisplayName,
-                            "max", currentTarget.toPlainString(),
+                            "max", config.economy.maxBalance.toPlainString(),
                             "symbol", config.economy.currencySymbol
                     )));
                 }

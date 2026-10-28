@@ -2,6 +2,7 @@ package ru.terracraft.economy.hook;
 
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import ru.terracraft.economy.TerrEconomyPlugin;
 import ru.terracraft.economy.config.PluginConfig;
@@ -47,13 +48,17 @@ public class TerrEconomyExpansion extends PlaceholderExpansion {
             case "balance_format_symvol", "balance_format_symbol" -> config.economy.currencySymbol + balance
                     .setScale(config.economy.fractionalDigits, RoundingMode.HALF_UP)
                     .toPlainString();
-            case "balance_short" -> abbreviate(balance);
-            case "balance_short_symvol", "balance_short_symbol" -> config.economy.currencySymbol + abbreviate(balance);
+            case "balance_short" -> abbreviate(player, balance);
+            case "balance_short_symvol", "balance_short_symbol" -> config.economy.currencySymbol + abbreviate(player, balance);
             default -> null;
         };
     }
 
-    private String abbreviate(BigDecimal value) {
+    /**
+     * Сокращает сумму с суффиксом на локали игрока (для онлайн) или
+     * defaultLocale (для офлайн — {@link OfflinePlayer} не знает локаль).
+     */
+    private String abbreviate(OfflinePlayer player, BigDecimal value) {
         if (value == null) return "0";
         BigDecimal abs = value.abs();
         String suffix;
@@ -61,13 +66,13 @@ public class TerrEconomyExpansion extends PlaceholderExpansion {
 
         if (abs.compareTo(BigDecimal.valueOf(1_000_000_000)) >= 0) {
             divisor = BigDecimal.valueOf(1_000_000_000);
-            suffix = lang.abbrevSuffix(LangKey.ABBREV_B);
+            suffix = suffixFor(player, LangKey.ABBREV_B);
         } else if (abs.compareTo(BigDecimal.valueOf(1_000_000)) >= 0) {
             divisor = BigDecimal.valueOf(1_000_000);
-            suffix = lang.abbrevSuffix(LangKey.ABBREV_M);
+            suffix = suffixFor(player, LangKey.ABBREV_M);
         } else if (abs.compareTo(BigDecimal.valueOf(1_000)) >= 0) {
             divisor = BigDecimal.valueOf(1_000);
-            suffix = lang.abbrevSuffix(LangKey.ABBREV_K);
+            suffix = suffixFor(player, LangKey.ABBREV_K);
         } else {
             return value.setScale(0, RoundingMode.HALF_UP).toPlainString();
         }
@@ -75,5 +80,12 @@ public class TerrEconomyExpansion extends PlaceholderExpansion {
         BigDecimal result = value.divide(divisor, 1, RoundingMode.HALF_UP);
         String formatted = result.stripTrailingZeros().toPlainString();
         return formatted + suffix;
+    }
+
+    private String suffixFor(OfflinePlayer player, LangKey key) {
+        if (player instanceof Player online) {
+            return lang.abbrevSuffix(online, key);
+        }
+        return lang.abbrevSuffix(key);
     }
 }

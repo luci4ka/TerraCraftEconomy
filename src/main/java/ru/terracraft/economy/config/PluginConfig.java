@@ -26,6 +26,9 @@ public final class PluginConfig {
     @Comment("Проверка обновлений плагина")
     public UpdatesSection updates = new UpdatesSection();
 
+    @Comment("Ограничение частоты команд (антиспам)")
+    public RateLimitSection rateLimit = new RateLimitSection();
+
     @Configuration
     public static final class LangSection {
         @Comment("Локаль: ru_RU или en_US")
@@ -39,6 +42,12 @@ public final class PluginConfig {
                 Должен совпадать с ключом в секции databases (например, "economy-db").
                 """)
         public String sourceId = "economy-db";
+
+        @Comment("Максимум попыток при transient SQL-ошибках (deadlock, lock wait timeout)")
+        public int retryMaxAttempts = 3;
+
+        @Comment("Базовая задержка между попытками (мс, экспоненциально: base, base*3, base*9)")
+        public long retryBaseDelayMs = 50;
     }
 
     @Configuration
@@ -58,10 +67,10 @@ public final class PluginConfig {
         @Comment("Символ валюты")
         public String currencySymbol = "$";
 
-        @Comment("Название валюты в единственном числе")
+        @Comment("Название валюты в единственном числе (Vault)")
         public String currencyNameSingular = "монета";
 
-        @Comment("Название валюты во множественном числе")
+        @Comment("Название валюты во множественном числе (Vault)")
         public String currencyNamePlural = "монет";
 
         @Comment("Количество знаков после запятой")
@@ -93,6 +102,9 @@ public final class PluginConfig {
 
         @Comment("Время на подтверждение (секунды)")
         public int confirmTimeout = 15;
+
+        @Comment("Через сколько дней удалять недоставленные pending-платежи (защита от роста таблицы)")
+        public int orphanedPendingMaxAgeDays = 7;
     }
 
     @Configuration
@@ -126,5 +138,14 @@ public final class PluginConfig {
     public static final class UpdatesSection {
         @Comment("Проверять обновления через GitHub Releases")
         public boolean check = true;
+    }
+
+    @Configuration
+    public static final class RateLimitSection {
+        @Comment("Кулдаун /pay между вызовами (мс). 0 — без ограничения")
+        public long payCooldownMs = 1000;
+
+        @Comment("Кулдаун /balance между вызовами (мс). 0 — без ограничения")
+        public long balanceCooldownMs = 500;
     }
 }

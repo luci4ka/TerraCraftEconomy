@@ -258,11 +258,13 @@ public class NotificationManager {
     // ============ Баланс ============
 
     public void showSelfBalance(Player player, BigDecimal balance) {
+        // Баланс в чате — с плюрализованной валютой (formatCurrencyStyled).
+        // Action bar оставляем с <symbol> — короткий формат.
         player.sendMessage(block(NamedTextColor.GOLD,
                 indented(lang.msgNoPrefix(player, LangKey.NOTIFY_BALANCE_SELF_TITLE)
                         .color(NamedTextColor.GOLD)
                         .decoration(TextDecoration.BOLD, true)),
-                indented(Component.text(balance.toPlainString() + " " + config.economy.currencySymbol)
+                indented(lang.formatCurrencyStyled(player, balance)
                         .color(NamedTextColor.GREEN)
                         .decoration(TextDecoration.BOLD, true)
                         .hoverEvent(HoverEvent.showText(
@@ -288,7 +290,7 @@ public class NotificationManager {
                                 .hoverEvent(HoverEvent.showText(
                                         lang.msgNoPrefix(viewer, LangKey.NOTIFY_BALANCE_OTHER_HOVER)))
                                 .clickEvent(ClickEvent.suggestCommand("/pay " + targetName + " "))),
-                indented(Component.text(balance.toPlainString() + " " + config.economy.currencySymbol)
+                indented(lang.formatCurrencyStyled(viewer, balance)
                         .color(NamedTextColor.GREEN)
                         .decoration(TextDecoration.BOLD, true))
         ));

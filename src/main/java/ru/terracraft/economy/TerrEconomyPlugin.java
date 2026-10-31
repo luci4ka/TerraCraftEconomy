@@ -27,7 +27,7 @@ import java.util.UUID;
 
 public final class TerrEconomyPlugin extends JavaPlugin {
 
-    private static final int BSTATS_ID = 12345;
+    private static final int BSTATS_ID = 35044;
     private static final long ORPHANED_CLEANUP_PERIOD_TICKS = 72_000L;
 
     private ConfigLoader configLoader;

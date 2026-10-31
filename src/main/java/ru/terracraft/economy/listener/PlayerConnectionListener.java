@@ -105,9 +105,9 @@ public class PlayerConnectionListener implements Listener {
 
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             // Зачисляем ВСЕГДА, независимо от того, онлайн игрок или нет.
-                            // Если игрок вышел между delete и зачислением — деньги
-                            // остаются в кэше, но мы ЯВНО сохраняем баланс в БД,
-                            // не полагаясь на onQuit/flushAll (onQuit уже отработал).
+                            // economyService.deposit() уже persist'ит баланс в БД
+                            // (persistBalanceChangeAsync внутри depositAndReport),
+                            // поэтому отдельный updateBalanceAsync не нужен.
                             BigDecimal total = BigDecimal.ZERO;
                             int count = 0;
                             for (var p : pending) {
@@ -117,9 +117,6 @@ public class PlayerConnectionListener implements Listener {
                                 count++;
                             }
                             if (count == 0) return;
-
-                            // Гарантируем persist нового баланса в БД.
-                            repo.updateBalanceAsync(uuid, cache.getBalance(uuid));
 
                             if (player.isOnline()) {
                                 notifier.offlinePaymentDelivered(player, lastSender, total, count, total);
